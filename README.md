@@ -1,4 +1,4 @@
-# ProjectAlfred
+# Project Alfred
 
 > Alfred — agentic Scrum Master for human+AI development teams
 
