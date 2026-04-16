@@ -376,3 +376,99 @@ This ensures: (a) the document is always the record; (b) no agent sees another a
 | Retro Analyst | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ |
 
 No agent writes to the board directly. Board writes require a HITL approval gate.
+
+---
+
+## Section 6: Technical Risks
+
+### Risk register
+
+| # | Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|---|
+| R1 | LLM output fails to parse against output schema | High | Medium | Pydantic validation at every agent boundary; retry with structured output prompt on parse failure; log failure to HandoverDocument |
+| R2 | GitHub Projects V2 GraphQL API rate limits or schema changes | Medium | High | Wrap all API calls in thin adapter (`tools/github_api.py`); mock the adapter in tests; rate-limit backoff |
+| R3 | RAG retrieves irrelevant chunks, degrading planner quality | Medium | Medium | Section-boundary chunking (not sentence-boundary); relevance score threshold; log retrieved chunks to HandoverDocument for inspection |
+| R4 | Checkpoint decision tables become stale as methodology evolves | Low | High | Decision tables live in the handover document itself, not in code — human updates the document, not a config file |
+| R5 | HITL gate blocks indefinitely in automated runs | Low | Low | Configurable timeout; default verdict on timeout (stop, not proceed); surface timeout in HandoverDocument |
+| R6 | SQLite diverges from document corpus (e.g., manual edits to docs) | Medium | Low | SQLite is rebuildable from corpus at any time; provide `alfred rebuild-index` command in Phase 7 |
+| R7 | Circular import between `handover.py` and `checkpoint.py` | Resolved | — | Deferred import at module bottom with `model_rebuild()` — pattern is in place |
+| R8 | Orchestrator grows implicit state over time (methodology drift) | Medium | High | Orchestrator is a single function with no instance variables; state is only written to HandoverDocument; enforced by code review |
+
+### Architecture invariants (must never be violated)
+
+1. The `HandoverDocument` is the only shared state between the orchestrator and agents.
+2. Agents receive typed input schemas; they return typed output schemas. No unstructured dicts cross agent boundaries.
+3. A checkpoint verdict of `escalate` always routes to the HITL gate. The orchestrator cannot override this.
+4. No agent holds a reference to another agent. All composition is done by the orchestrator.
+5. Board writes only occur after a HITL approval gate clears.
+
+---
+
+## Section 7: Phase 3 Scaffold Specification
+
+Phase 3 creates the repository structure that Phase 4 implementation fills in. Every file listed here is a stub: it has the correct module structure and docstring, but no implementation. This lets Phase 4 work in parallel without import errors.
+
+### Directory tree
+
+```
+projectalfred/
+├── src/
+│   └── alfred/
+│       ├── __init__.py
+│       ├── api.py                    ← FastAPI app and routers (stub)
+│       ├── orchestrator.py           ← orchestrate() function (stub)
+│       ├── agents/
+│       │   ├── __init__.py
+│       │   ├── planner.py            ← Planner agent (stub)
+│       │   ├── story_generator.py    ← Story Generator agent (stub)
+│       │   ├── quality_judge.py      ← Quality Judge agent (stub)
+│       │   └── retro_analyst.py      ← Retro Analyst agent (stub)
+│       ├── schemas/
+│       │   ├── __init__.py
+│       │   ├── handover.py           ← HandoverDocument schema ✓ done
+│       │   ├── checkpoint.py         ← Checkpoint schema ✓ done
+│       │   ├── agent.py              ← Agent I/O schemas ✓ done
+│       │   └── config.py             ← AlfredConfig schema ✓ done
+│       └── tools/
+│           ├── __init__.py
+│           ├── github_api.py         ← GitHub Projects V2 adapter (stub)
+│           ├── rag.py                ← RAG engine (stub)
+│           ├── llm.py                ← LLM adapter (stub)
+│           └── persistence.py        ← SQLite persistence (stub)
+├── tests/
+│   ├── __init__.py
+│   ├── test_schemas/
+│   │   ├── __init__.py
+│   │   ├── test_handover.py          ← Schema round-trip tests (stub)
+│   │   ├── test_checkpoint.py        ← Checkpoint tests (stub)
+│   │   └── test_config.py            ← Config validation tests (stub)
+│   └── test_orchestrator.py          ← Orchestrator tests (stub)
+├── configs/
+│   ├── default.yaml                  ← System config ✓ done
+│   └── handover_template.md          ← Handover template (stub)
+├── docs/
+│   ├── architecture.md               ← This document ✓ done
+│   └── ALFRED_HANDOVER_*.md          ← Handover corpus
+├── data/                             ← Runtime data (gitignored)
+│   ├── alfred.db                     ← SQLite (created at runtime)
+│   └── rag_index/                    ← RAG index (created at runtime)
+├── pyproject.toml                    ← Dependencies and tooling ← Task 8
+└── CLAUDE.md                         ← ✓ done
+```
+
+### Stub contract
+
+Each stub file must:
+1. Have a module-level docstring that states the component's responsibility and what Phase 4 will implement.
+2. Define the public function or router signature with the correct type annotations.
+3. Raise `NotImplementedError` in the function body (not `pass`) so import-time errors are caught.
+4. Import from the schema layer (`src/alfred/schemas/`) so import resolution is validated.
+
+### Phase 3 acceptance criteria
+
+- `python -c "import alfred"` succeeds with no errors.
+- `python -c "from alfred.schemas.handover import HandoverDocument"` succeeds.
+- `python -c "from alfred.orchestrator import orchestrate"` succeeds (raises `NotImplementedError` if called).
+- All stub files exist at the paths specified above.
+- `pytest tests/` runs without import errors (all tests skip or pass).
+- `pyproject.toml` is present and `pip install -e .` completes cleanly.
