@@ -252,3 +252,127 @@ Triggered at end of sprint. Read-only analysis across handover corpus.
            │  (no write without approval) │
            └──────────────────────────────┘
 ```
+
+---
+
+## Section 4: State Flow
+
+### State lives in the document, not in the orchestrator
+
+Alfred has no hidden state. All runtime state is written into the `HandoverDocument` as tasks complete and checkpoints are evaluated. The document is a complete, reproducible record of the session.
+
+```
+HandoverDocument lifecycle:
+
+  DRAFT                 IN_PROGRESS             COMPLETE
+  ──────                ───────────             ────────
+
+  tasks:                tasks:                  tasks:
+    - status: pending     - status: complete      - status: complete (all)
+    - result: None        - result: {...}        
+                          - checkpoint:         post_mortem:
+                            result: {...}         - what_worked: [...]
+                                                  - what_failed: [...]
+                                                  - forward_plan: [...]
+```
+
+### State transitions per task
+
+```
+             ┌──────────────────────────────┐
+             │  task.status = "pending"     │
+             └──────────────┬───────────────┘
+                            │  orchestrator calls agent
+                            ▼
+             ┌──────────────────────────────┐
+             │  task.status = "in_progress" │
+             └──────────────┬───────────────┘
+                            │  agent returns output
+                            ▼
+             ┌──────────────────────────────┐
+             │  Has checkpoint?             │
+             └──────┬───────────────────────┘
+                    │
+         ┌──────────┴───────────┐
+         │ No checkpoint        │ Checkpoint present
+         ▼                      ▼
+  task.status =      Quality Judge evaluates
+  "complete"         ┌─────────────────────┐
+  Write result       │ verdict             │
+                     └──────┬──────────────┘
+                            │
+          ┌─────────────────┼─────────────────┐
+          ▼                 ▼                 ▼
+     "proceed"          "pivot"          "stop" /
+     task.status =    Orchestrator       "escalate"
+     "complete"       revises plan       Halt execution
+```
+
+### Persistence strategy
+
+Two persistence layers — one canonical, one operational:
+
+| Layer | Storage | What lives here | Source of truth? |
+|---|---|---|---|
+| **Document layer** | Filesystem (`.md` files) | Handover documents, decisions, task results, post-mortems | **Yes** |
+| **Operational layer** | SQLite (`data/alfred.db`) | Velocity history, agent traces, checkpoint evaluation history, sprint metadata | No — derived from documents |
+
+SQLite is rebuilt from the document corpus at any time. If it diverges from the documents, documents win.
+
+---
+
+## Section 5: Agent Interaction Model
+
+### Agents are functions, not actors
+
+Agents do not communicate with each other. They do not share state, hold references, or form a graph. Each agent is a pure function: given an input schema, it returns an output schema. The orchestrator is the only entity that composes them.
+
+```
+WRONG (framework-style):
+
+  Planner ──message──► Story Generator ──critique──► Quality Judge
+     ▲                                                     │
+     └─────────────────── revision loop ──────────────────┘
+
+CORRECT (Alfred):
+
+  Orchestrator
+      │
+      ├──► Planner(PlannerInput) → PlannerOutput
+      │
+      ├──► StoryGenerator(StoryGeneratorInput) → StoryGeneratorOutput
+      │
+      ├──► QualityJudge(QualityJudgeInput) → QualityJudgeOutput
+      │
+      └──► RetroAnalyst(RetroAnalystInput) → RetroAnalystOutput
+```
+
+### Information flow between agents
+
+Agents do not pass output directly to each other. When the orchestrator needs to route output from one agent as input to another, it writes the output to the `HandoverDocument` first, then constructs a fresh input from the document.
+
+```
+Planner produces draft_handover_markdown
+        │
+        ▼
+Orchestrator writes draft to HandoverDocument.tasks[n].result
+        │
+        ▼
+Orchestrator constructs QualityJudgeInput from HandoverDocument
+        │
+        ▼
+Quality Judge evaluates the draft
+```
+
+This ensures: (a) the document is always the record; (b) no agent sees another agent's internal reasoning; (c) a session can be replayed from any point by re-reading the document.
+
+### Agent capability matrix
+
+| Agent | Reads board | Writes board | Reads corpus | Writes docs | Evaluates checkpoints | Executes tasks |
+|---|---|---|---|---|---|---|
+| Planner | ✓ | ✗ | ✓ | Draft only | ✗ | ✗ |
+| Story Generator | ✓ | ✗ | ✓ | Draft only | ✗ | ✗ |
+| Quality Judge | ✗ | ✗ | ✓ | ✗ | ✓ | ✗ |
+| Retro Analyst | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ |
+
+No agent writes to the board directly. Board writes require a HITL approval gate.
