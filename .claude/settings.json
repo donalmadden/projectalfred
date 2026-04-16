@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//home/donal/code/3b_EBD_MLOps/docs/**)",
+      "Bash(pip install *)",
+      "Bash(python -c \"import alfred; from alfred.schemas.handover import HandoverDocument; from alfred.schemas.checkpoint import Checkpoint; from alfred.schemas.agent import PlannerInput; from alfred.schemas.config import AlfredConfig; print\\('all imports ok'\\)\")",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}
