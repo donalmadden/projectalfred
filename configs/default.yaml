@@ -1,0 +1,44 @@
+# Alfred default configuration
+# All secrets (API keys, tokens) are referenced by environment variable name only.
+# Never store credentials in this file.
+
+llm:
+  provider: "anthropic"
+  model: ""               # Set via LLM_MODEL env var or override config
+  temperature: 0.0        # Deterministic by default (methodology property 2)
+  max_tokens: 4096
+
+cost_routing:
+  enabled: false
+  classifier_model: ""    # Cheap model for triage (Phase 5)
+  generator_model: ""     # Strong model for generation (Phase 5)
+
+github:
+  org: ""                 # Your GitHub org or user
+  project_number: 0       # GitHub Projects V2 project number
+  token_env_var: "GITHUB_TOKEN"
+
+rag:
+  corpus_path: ""         # Path to directory containing handover documents
+  chunk_size: 1000
+  chunk_overlap: 200
+  embedding_model: ""
+  index_path: "data/rag_index"
+
+database:
+  path: "data/alfred.db"
+
+handover:
+  schema_version: "1.0"
+  template_path: "configs/handover_template.md"
+  corpus_glob: "**/*_HANDOVER_*.md"
+
+agents:
+  planner:
+    enabled: true
+  story_generator:
+    enabled: true
+  quality_judge:
+    enabled: true
+  retro_analyst:
+    enabled: true
