@@ -5,7 +5,11 @@
       "Bash(pip install *)",
       "Bash(python -c \"import alfred; from alfred.schemas.handover import HandoverDocument; from alfred.schemas.checkpoint import Checkpoint; from alfred.schemas.agent import PlannerInput; from alfred.schemas.config import AlfredConfig; print\\('all imports ok'\\)\")",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(.venv/bin/python -c \"import alfred.agents; import alfred.tools; print\\('package structure ok'\\)\")",
+      "Bash(.venv/bin/pip show *)",
+      "Bash(.venv/bin/pip install *)",
+      "Bash(.venv/bin/pytest tests/ -v)"
     ]
   }
 }
