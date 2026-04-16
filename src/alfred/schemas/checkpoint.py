@@ -106,3 +106,46 @@ class Checkpoint(BaseModel):
     @property
     def verdict(self) -> Optional[Verdict]:
         return self.result.verdict if self.result else None
+
+
+# ---------------------------------------------------------------------------
+# Factory helpers
+# ---------------------------------------------------------------------------
+
+
+def create_checkpoint(
+    checkpoint_id: str,
+    question: str,
+    evidence_required: str,
+    rules: list[tuple[str, Verdict]],
+    default_verdict: Verdict = "stop",
+) -> Checkpoint:
+    """Convenience factory for constructing a checkpoint with inline rules.
+
+    Args:
+        checkpoint_id: e.g. "CHECKPOINT-1"
+        question: single-sentence description of what this gate decides
+        evidence_required: what the executor must paste verbatim
+        rules: list of (condition_text, verdict) pairs
+        default_verdict: verdict when no rule matches
+
+    Example::
+
+        cp = create_checkpoint(
+            "CHECKPOINT-1",
+            "Whether the dataset reverted to pos115 only",
+            "Paste output of the verification script",
+            [
+                ("Positions == ['115']", "proceed"),
+                ("pos235 still present", "stop"),
+            ],
+        )
+    """
+    decision_rules = [DecisionRule(condition=c, likely_verdict=v) for c, v in rules]
+    table = DecisionTable(rules=decision_rules, default_verdict=default_verdict)
+    return Checkpoint(
+        id=checkpoint_id,
+        question=question,
+        evidence_required=evidence_required,
+        decision_table=table,
+    )
