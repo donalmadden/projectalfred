@@ -248,6 +248,20 @@ The origin prompt (`~/code/3b_EBD_MLOps/docs/builder_prompt.md`) defines what "d
 
 **Gaps identified:** The Phase 3 scaffold spec (Task 7) should be updated to include `evals/` and `.env.example`. The `dashboard/` and `scripts/` directories can wait until their respective phases.
 
+### 9. Handover Format Transition Plan
+
+The project bootstraps itself: Alfred can't manage its own handovers until it exists, but the handovers are what build Alfred. The transition from raw `*_HANDOVER_N.md` documents to schema-driven engineering happens in three stages:
+
+| Stage | Phase | Handover style | What changes |
+|---|---|---|---|
+| **Raw markdown** | Phases 1-2 | Free-form `ALFRED_HANDOVER_1.md` | This handover *defines* the schema — it cannot conform to a schema that doesn't exist yet |
+| **Schema-conformant** | Phase 3 | `ALFRED_HANDOVER_2.md` written by hand but conforming to the Handover schema structure from Phase 2 | First handover that can be statically validated against the Pydantic model. Serves as both a real coordination document and a schema stress-test. |
+| **Schema-first** | Phase 4+ | Handovers generated from structured data via `render_markdown()`, validated by Alfred | `ALFRED_HANDOVER_3.md` (for Phase 5) is the first handover where Alfred generates the draft and humans approve. Full dogfooding. |
+
+**Retroactive validation:** When `from_markdown()` is functional (Phase 4), retroactively parse `ALFRED_HANDOVER_1.md` and `_2.md` against the schema. Document any parse failures — they are data about schema rigidity, not errors in the handovers.
+
+**The transition is the dogfood test.** If Alfred's Handover schema cannot represent Alfred's own handover documents, the schema is wrong.
+
 ---
 
 ## HARD RULES
@@ -810,6 +824,8 @@ Phases 3-8 are not yet planned at task level. Each will get its own `ALFRED_HAND
 - Schemas from Phase 2 wired into the package (`src/alfred/schemas/`)
 - `pip install -e .` must succeed; `import alfred` must work
 
+**Handover format transition:** `ALFRED_HANDOVER_2.md` (this phase's handover) must be written conforming to the Handover schema structure from Phase 2. It is the first schema-conformant handover — written by hand, but structurally valid against the Pydantic model. Include a static validation test that parses it via `from_markdown()` as part of the Phase 3 scaffold.
+
 **Does NOT include:** Any working functionality. The scaffold is a skeleton that Phase 4 fills.
 
 ### Phase 4 — Core Implementation
@@ -832,6 +848,8 @@ Phases 3-8 are not yet planned at task level. Each will get its own `ALFRED_HAND
 - How `from_markdown()` handles the 37+ real BOB_HANDOVER documents (the hardest parse problem)
 
 **Dogfood milestone:** By end of Phase 4, Alfred should be able to: (1) ingest the BOB_HANDOVER corpus, (2) answer RAG queries against it, (3) validate a handover document against the schema, (4) generate a draft handover from board state + corpus context. All with human approval gates.
+
+**Handover format transition:** Retroactively validate `ALFRED_HANDOVER_1.md` and `_2.md` via `from_markdown()`. Document parse failures as schema design data. From this point forward, `ALFRED_HANDOVER_3.md` (for Phase 5) is the first handover generated schema-first by Alfred and approved by a human. This is the full dogfood moment — see [Design Decision 9](#9-handover-format-transition-plan).
 
 ### Phase 5 — Stretch Enhancements
 
