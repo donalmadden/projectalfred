@@ -31,6 +31,8 @@ htmlcov/
 .tox/
 
 # Data and artifacts (never commit these)
+data/*
+!data/.gitkeep
 data/raw/
 data/processed/
 artifacts/
