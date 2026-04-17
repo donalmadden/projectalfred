@@ -519,15 +519,25 @@ cat data/dogfood/handover4_run1.json | python -m json.tool
 
 ## POST-MORTEM
 
-TBD
+Task 6 dogfood run completed against `BOB_HANDOVER_41.md`.
 
 **What worked:**
-- <fill in after execution>
+- Full generation → compile → execute → checkpoint loop succeeded end-to-end using real LLM calls and a full-corpus RAG index.
+- `index_corpus` over `~/code/3b_EBD_MLOps/docs` produced 527 chunks and the run artifact was captured at `data/dogfood/handover4_run1.json`.
+- The planner draft compiled into a structured handover at `data/handovers/handover4_dogfood_run1.json` with 3 tasks and 1 checkpoint.
+- The orchestrator evaluated the first task successfully and returned `proceed` by matching the decision-table observation `All set names verified as consistent across documentation and codebase.`
+- Cost routing behaved as intended in the dogfood run: generation/compile used `gpt-4o`, checkpoint classification used `gpt-4o-mini`.
+- The executable code state validated by this run was commit `79e2ce5` (`phase5: task 5 — hitl timeout`). The later `7b65daa` commit added `CODEX.md` only and did not change runtime behavior.
 
 **What failed / findings:**
-- <fill in after execution>
+- Compilation produced 2 warnings: Task 2 (`Evaluate and Document Findings`) and Task 3 (`Scope Out Next Experiments`) had no checkpoints. This is acceptable for Task 6 but should be tightened in Phase 6.
+- The planner response's `task_decomposition` and `open_questions` lists were empty in this run, even though the compiled handover was usable. That suggests the markdown draft is the stronger contract than those auxiliary fields today.
+- Full acceptance evidence was verified in the project `.venv`: `127 passed, 3 skipped, 1 warning in 1.63s` from `pytest -v --tb=short`.
+- The remaining warning is environmental rather than functional: `PytestConfigWarning: Unknown config option: asyncio_mode`. This does not block Phase 5 acceptance but is worth cleaning up in Phase 6.
 
 **Forward plan:**
-- <fill in after execution>
+- Treat Phase 5 as complete.
+- In Phase 6, tighten planner/compiler expectations so more compiled tasks carry explicit checkpoints.
+- Clean up the pytest configuration warning so the test run is fully clean as well as green.
 
 **next_handover_id:** ALFRED_HANDOVER_5 (Phase 6: Evaluations and Tests)
