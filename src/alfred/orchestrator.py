@@ -35,6 +35,9 @@ from alfred.schemas.agent import (
 )
 
 
+from alfred.schemas.handover import CritiqueEntry  # noqa: E401 (needed before class defs)
+
+
 class CheckpointHalt(Exception):
     """Raised when a checkpoint returns a STOP verdict."""
 
@@ -299,6 +302,93 @@ def _route_on_verdict(
             f"ESCALATE at {checkpoint.id} (task {task.id}): human decision required. "
             + (checkpoint.result.reasoning if checkpoint.result else "")
         )
+
+
+# ---------------------------------------------------------------------------
+# Critique loop — planner–judge revision cycle (methodology property 3:
+# orchestrator mediates; planner and judge never call each other directly)
+# ---------------------------------------------------------------------------
+
+
+def _run_critique_loop(
+    draft_markdown: str,
+    handover: HandoverDocument,
+    config: AlfredConfig,
+    db_path: Optional[str],
+) -> str:
+    """Run planner–judge iterations. Returns the best draft markdown.
+
+    The orchestrator calls each agent in turn and writes intermediate results
+    to handover.critique_history. The planner never calls the judge; the
+    judge never calls the planner.
+    """
+    import datetime
+
+    from alfred.agents.planner import run_planner
+    from alfred.agents.quality_judge import run_quality_judge
+
+    planner_cfg = config.agents.planner
+    max_iters: int = planner_cfg.max_critique_iterations
+    threshold: float = planner_cfg.critique_quality_threshold
+
+    if max_iters <= 0:
+        return draft_markdown
+
+    current_draft = draft_markdown
+    best_draft = draft_markdown
+    best_score: float = -1.0
+
+    for iteration in range(max_iters):
+        # Quality judge evaluates the current draft (task_type="critique" — cost routing hook for Task 3)
+        judge_input = QualityJudgeInput(
+            handover_document_markdown=current_draft,
+            checkpoint_definitions=[],
+        )
+        judge_out = run_quality_judge(
+            judge_input,
+            provider=config.llm.provider,
+            model=config.llm.model,
+            db_path=db_path,
+        )
+
+        score: float = judge_out.overall_quality_score or 0.0
+        issues: list[str] = [v.description for v in judge_out.validation_issues]
+
+        if score > best_score:
+            best_score = score
+            best_draft = current_draft
+
+        # Stop early if draft passes quality bar
+        if not issues or score >= threshold:
+            break
+
+        # Only revise when there is another iteration to run
+        if iteration + 1 < max_iters:
+            entry = CritiqueEntry(
+                iteration=iteration,
+                quality_score=score,
+                validation_issues=issues,
+                revised_at=datetime.datetime.utcnow().isoformat(),
+            )
+            handover.critique_history.append(entry)
+
+            board = _get_board_state(config)
+            velocity = _get_velocity_history(config, db_path)
+            chunks = _retrieve_rag(current_draft[:200], config)
+            planner_out = run_planner(
+                PlannerInput(
+                    board_state=board,
+                    velocity_history=velocity,
+                    prior_handover_summaries=chunks,
+                    prior_critique=handover.critique_history,
+                ),
+                provider=config.llm.provider,
+                model=config.llm.model,
+                db_path=db_path,
+            )
+            current_draft = planner_out.draft_handover_markdown
+
+    return best_draft
 
 
 # ---------------------------------------------------------------------------

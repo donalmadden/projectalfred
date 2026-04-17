@@ -175,13 +175,17 @@ def _get_rag_chunks(query: str, config: AlfredConfig) -> list[RAGChunk]:
 @app.post("/generate", response_model=GenerateResponse)
 def generate(request: GenerateRequest) -> GenerateResponse:
     """Plan sprint: board state + corpus context → draft handover."""
+    import datetime
+
     from alfred.agents.planner import run_planner
-    from alfred.agents.story_generator import run_story_generator
+    from alfred.orchestrator import _run_critique_loop
+    from alfred.schemas.handover import HandoverContext, HandoverDocument
 
     config = get_config()
     board = _get_board(config)
     velocity = _get_velocity(config)
     chunks = _get_rag_chunks(request.sprint_goal or "sprint planning", config)
+    db_path = config.database.path or None
 
     planner_out = run_planner(
         PlannerInput(
@@ -192,11 +196,27 @@ def generate(request: GenerateRequest) -> GenerateResponse:
         ),
         provider=config.llm.provider,
         model=config.llm.model,
-        db_path=config.database.path or None,
+        db_path=db_path,
+    )
+
+    # Critique loop refines the draft before returning it to the caller.
+    # A temporary HandoverDocument stores the critique_history for the loop.
+    temp_handover = HandoverDocument(
+        id=f"generate-{request.prior_handover_id or 'draft'}",
+        title="Draft",
+        date=datetime.date.today(),
+        author="system",
+        context=HandoverContext(narrative=""),
+    )
+    best_draft = _run_critique_loop(
+        planner_out.draft_handover_markdown,
+        temp_handover,
+        config,
+        db_path,
     )
 
     return GenerateResponse(
-        draft_handover_markdown=planner_out.draft_handover_markdown,
+        draft_handover_markdown=best_draft,
         task_decomposition=planner_out.task_decomposition,
         open_questions=planner_out.open_questions,
     )

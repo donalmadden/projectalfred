@@ -111,6 +111,15 @@ class HandoverContext(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class CritiqueEntry(BaseModel):
+    """One iteration of the planner–judge revision cycle."""
+
+    iteration: int
+    quality_score: float
+    validation_issues: list[str]
+    revised_at: Optional[str] = None  # ISO timestamp
+
+
 class PostMortem(BaseModel):
     """Inline failure analysis feeding the next iteration.
 
@@ -158,6 +167,9 @@ class HandoverDocument(BaseModel):
     task_overview: list[TaskSummaryRow] = Field(default_factory=list)
     tasks: list[HandoverTask] = Field(default_factory=list)
     anti_patterns: list[str] = Field(default_factory=list)
+
+    # Populated during critique loop (Phase 5)
+    critique_history: list[CritiqueEntry] = Field(default_factory=list)
 
     # Populated after execution
     post_mortem: Optional[PostMortem] = None

@@ -36,6 +36,8 @@ handover:
 agents:
   planner:
     enabled: true
+    max_critique_iterations: 2
+    critique_quality_threshold: 0.8
   story_generator:
     enabled: true
   quality_judge:

@@ -89,6 +89,7 @@ class PlannerInput(BaseModel):
     prior_handover_summaries: list[RAGChunk] = Field(default_factory=list)
     current_handover_context: Optional[str] = None
     sprint_goal: Optional[str] = None
+    prior_critique: Optional[list["CritiqueEntry"]] = None
 
 
 class SprintPlan(BaseModel):
@@ -314,6 +315,7 @@ class RetroAnalystOutput(BaseModel):
 # Deferred import — resolve HandoverDocument forward reference in CompilerOutput
 # ---------------------------------------------------------------------------
 
-from alfred.schemas.handover import HandoverDocument  # noqa: E402
+from alfred.schemas.handover import CritiqueEntry, HandoverDocument  # noqa: E402
 
+PlannerInput.model_rebuild()
 CompilerOutput.model_rebuild()

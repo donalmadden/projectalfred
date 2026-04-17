@@ -149,10 +149,18 @@ class AgentToggle(BaseModel):
     enabled: bool = True
 
 
-class AgentsConfig(BaseModel):
-    """Agent enable flags. All enabled by default."""
+class PlannerAgentConfig(BaseModel):
+    """Planner-specific settings including critique loop parameters."""
 
-    planner: AgentToggle = Field(default_factory=AgentToggle)
+    enabled: bool = True
+    max_critique_iterations: int = Field(default=2, ge=0)
+    critique_quality_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
+class AgentsConfig(BaseModel):
+    """Agent enable flags and per-agent settings. All enabled by default."""
+
+    planner: PlannerAgentConfig = Field(default_factory=PlannerAgentConfig)
     story_generator: AgentToggle = Field(default_factory=AgentToggle)
     quality_judge: AgentToggle = Field(default_factory=AgentToggle)
     retro_analyst: AgentToggle = Field(default_factory=AgentToggle)

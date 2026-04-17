@@ -73,6 +73,16 @@ def _build_prompt(input: PlannerInput) -> str:
     if input.sprint_goal:
         parts.append(f"SPRINT GOAL:\n{input.sprint_goal}")
 
+    if input.prior_critique:
+        last = input.prior_critique[-1]
+        issues_text = "\n".join(f"  - {issue}" for issue in last.validation_issues)
+        parts.append(
+            f"PRIOR CRITIQUE (iteration {last.iteration}, score {last.quality_score:.2f}):\n"
+            "The previous draft was reviewed and found the following issues to address:\n"
+            f"{issues_text}\n"
+            "Please revise the draft to address these issues."
+        )
+
     parts.append(
         "TASK:\n"
         "Produce a draft handover document in markdown. Include:\n"
