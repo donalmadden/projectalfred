@@ -103,3 +103,20 @@ def test_index_is_rebuilt_on_reindex(corpus: Path, tmp_path: Path) -> None:
     rag.index_corpus(str(corpus), index_path, embedding_model="fake-model")
     n2 = rag.index_corpus(str(corpus), index_path, embedding_model="fake-model")
     assert n2 == 6  # still 6 — collection was dropped and rebuilt, not appended
+
+
+def test_embedder_loaded_once_across_calls(corpus: Path, tmp_path: Path) -> None:
+    """Factory called exactly once even when index_corpus and retrieve both run."""
+    factory_calls = {"n": 0}
+    original_factory = rag._embedder_factory
+
+    def counting_factory(model_name: str):
+        factory_calls["n"] += 1
+        return original_factory(model_name)
+
+    rag.set_embedder(counting_factory)
+    index_path = str(tmp_path / "index")
+    rag.index_corpus(str(corpus), index_path, embedding_model="fake-model")
+    rag.retrieve("widget refactor", index_path, top_k=2)
+
+    assert factory_calls["n"] == 1

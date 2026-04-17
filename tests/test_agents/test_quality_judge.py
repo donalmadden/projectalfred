@@ -242,3 +242,47 @@ def test_missing_checkpoint_section_creates_warning() -> None:
     out = quality_judge.run_quality_judge(inp, provider="fake", model="m")
     warnings = [i for i in out.validation_issues if i.severity == "warning"]
     assert any("checkpoint" in w.description.lower() for w in warnings)
+
+
+def test_compliance_scan_ignores_executor_output() -> None:
+    """Executor output has no methodology keywords; handover markdown has all five."""
+    markdown = (
+        "# Handover\n\n"
+        "## Checkpoint\n\n"
+        "This document is the handover protocol.\n"
+        "Checkpoint-gated execution with verdict routing.\n"
+        "Executor and reviewer are isolated from each other.\n"
+        "Inline post-mortem and forward plan after failure.\n"
+        "Each cold-start resumes from a stateless session document.\n"
+    )
+    inp = QualityJudgeInput(
+        handover_document_markdown=markdown,
+        checkpoint_definitions=[],
+        executor_output=ExecutorOutput(
+            task_id="t1",
+            console_output="build: 0 errors. no relevant output here.",
+        ),
+    )
+    out = quality_judge.run_quality_judge(inp, provider="fake", model="m")
+    for prop in ["1", "2", "3", "4", "5"]:
+        assert out.methodology_compliance[prop] is True, f"property {prop} not detected"
+
+
+def test_compliance_scan_uses_markdown_only() -> None:
+    """Keywords only in executor output must not flip compliance flags to True."""
+    executor_keywords = (
+        "handover document as protocol, checkpoint verdict gate, "
+        "executor reviewer isolation, post-mortem forward plan failure analysis, "
+        "cold-start stateless session"
+    )
+    inp = QualityJudgeInput(
+        handover_document_markdown="# Sprint Notes\n\nNothing relevant here.",
+        checkpoint_definitions=[],
+        executor_output=ExecutorOutput(
+            task_id="t1",
+            console_output=executor_keywords,
+        ),
+    )
+    out = quality_judge.run_quality_judge(inp, provider="fake", model="m")
+    for prop in ["1", "2", "3", "4", "5"]:
+        assert out.methodology_compliance[prop] is False, f"property {prop} wrongly True"

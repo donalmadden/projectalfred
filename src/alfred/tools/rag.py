@@ -98,16 +98,20 @@ def _default_embedder(model_name: str) -> Embedder:
 
 
 _embedder_factory: Callable[[str], Embedder] = _default_embedder
+_EMBEDDER_CACHE: dict[str, Embedder] = {}
 
 
 def set_embedder(factory: Callable[[str], Embedder]) -> None:
     """Replace the embedder factory. Tests use this to inject a deterministic fake."""
     global _embedder_factory
     _embedder_factory = factory
+    _EMBEDDER_CACHE.clear()
 
 
 def _make_embedder(model_name: str) -> Embedder:
-    return _embedder_factory(model_name)
+    if model_name not in _EMBEDDER_CACHE:
+        _EMBEDDER_CACHE[model_name] = _embedder_factory(model_name)
+    return _EMBEDDER_CACHE[model_name]
 
 
 # ---------------------------------------------------------------------------

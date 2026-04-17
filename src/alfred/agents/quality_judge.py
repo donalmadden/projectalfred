@@ -144,6 +144,7 @@ _METHODOLOGY_SIGNALS = {
 
 
 def _check_methodology_compliance(markdown: str) -> dict[str, bool]:
+    # scan `markdown` only — never executor output
     lower = markdown.lower()
     return {
         prop: any(kw in lower for kw in keywords)
