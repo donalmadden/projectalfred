@@ -122,6 +122,18 @@ class DashboardResponse(BaseModel):
     recent_checkpoints: list[dict[str, Any]]
 
 
+class CompileRequest(BaseModel):
+    draft_handover_markdown: str
+    handover_id: str
+    author: str
+
+
+class CompileResponse(BaseModel):
+    handover_id: str
+    tasks_compiled: int
+    warnings: list[str]
+
+
 # ---------------------------------------------------------------------------
 # Endpoint helpers
 # ---------------------------------------------------------------------------
@@ -267,6 +279,49 @@ def retrospective(request: RetrospectiveRequest) -> RetroAnalystOutput:
         provider=config.llm.provider,
         model=config.llm.model,
         db_path=config.database.path or None,
+    )
+
+
+@app.post("/compile", response_model=CompileResponse)
+def compile_handover(request: CompileRequest) -> CompileResponse:
+    """Compile an approved prose draft into a structured HandoverDocument.
+
+    This endpoint is intentionally separate from POST /generate.
+    It must only be called after a human has reviewed and approved the prose draft.
+    """
+    import json
+    import os
+
+    from alfred.agents.compiler import run_compiler
+    from alfred.schemas.agent import CompilerInput
+
+    config = get_config()
+    compiler_input = CompilerInput(
+        draft_handover_markdown=request.draft_handover_markdown,
+        handover_id=request.handover_id,
+        author=request.author,
+    )
+
+    try:
+        result = run_compiler(
+            compiler_input,
+            provider=config.llm.provider,
+            model=config.llm.model,
+            db_path=config.database.path or None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    output_dir = os.path.join("data", "handovers")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{request.handover_id}.json")
+    with open(output_path, "w") as f:
+        f.write(result.handover.model_dump_json(indent=2))
+
+    return CompileResponse(
+        handover_id=request.handover_id,
+        tasks_compiled=len(result.handover.tasks),
+        warnings=result.compilation_warnings,
     )
 
 

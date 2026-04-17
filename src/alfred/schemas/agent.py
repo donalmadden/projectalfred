@@ -232,6 +232,22 @@ class QualityJudgeOutput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Compiler — extracts structured HandoverDocument from prose draft
+# ---------------------------------------------------------------------------
+
+
+class CompilerInput(BaseModel):
+    draft_handover_markdown: str
+    handover_id: str
+    author: str
+
+
+class CompilerOutput(BaseModel):
+    handover: "HandoverDocument"
+    compilation_warnings: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Retro Analyst — read-only pattern extraction across handover corpus
 # ---------------------------------------------------------------------------
 
@@ -292,3 +308,12 @@ class RetroAnalystOutput(BaseModel):
 
     # Forbidden: any write operation, document modification, board writes,
     # escalation, checkpoint evaluation — this agent is read-only
+
+
+# ---------------------------------------------------------------------------
+# Deferred import — resolve HandoverDocument forward reference in CompilerOutput
+# ---------------------------------------------------------------------------
+
+from alfred.schemas.handover import HandoverDocument  # noqa: E402
+
+CompilerOutput.model_rebuild()
