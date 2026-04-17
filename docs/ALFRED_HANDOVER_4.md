@@ -115,7 +115,7 @@ Out of scope:
 
 ### Why a separate compilation step
 
-The planner's job is to write good prose — a document a human can read, approve, and correct. Forcing it to also emit a perfectly structured JSON graph in one shot degrades the prose quality and makes human review harder. Instead, the compiler is a second, focused LLM call that extracts structure from already-approved prose. This preserves property 7 (Alfred drafts, humans approve): the human approves the prose draft; the compiler only fires after approval.
+The planner's job is to write good prose — a document a human can read, approve, and correct. Forcing it to also emit a perfectly structured JSON graph in one shot degrades the prose quality and makes human review harder. Instead, the compiler is a second, focused LLM call that extracts structure from already-approved prose. This preserves property 7 (Alfred drafts, humans approve): the human approves the prose draft; the compiler only fires after approval. **The compiler must NOT be wired into `POST /generate`.** `POST /generate` returns prose only. A separate `POST /compile` endpoint is the trigger for compilation.
 
 ### Implementation
 
@@ -142,10 +142,11 @@ The planner's job is to write good prose — a document a human can read, approv
    - Call `llm.complete(..., output_schema=CompilerOutput)`.
    - Validate: if `handover.tasks` is empty, treat as a compilation failure (raise `ValueError`).
 
-5. **Wire into `POST /generate`** in `api.py`:
-   - After planner returns `draft_handover_markdown`, call `run_compiler`.
-   - Return both the markdown draft and the compiled `HandoverDocument` id in the response.
-   - Update `GenerateResponse` to include `compiled_handover_id: Optional[str]`.
+5. **Add `POST /compile`** endpoint in `api.py` (separate from `POST /generate`):
+   - Accepts `{ "draft_handover_markdown": str, "handover_id": str, "author": str }`.
+   - Calls `run_compiler` and writes the resulting `HandoverDocument` to `data/handovers/{handover_id}.json`.
+   - Returns `{ "handover_id": str, "tasks_compiled": int, "warnings": list[str] }`.
+   - `POST /generate` is unchanged — it returns prose only. Compilation is a deliberate second step, intended to be called only after a human has reviewed and approved the prose draft.
 
 6. **Tests** — `tests/test_agents/test_compiler.py`:
    - Feed a markdown draft with two tasks and a checkpoint; assert the compiled document has 2 tasks.
@@ -171,8 +172,8 @@ pytest tests/test_agents/test_compiler.py -v
 ### Design constraints
 
 - **The orchestrator mediates.** The planner does not call the quality judge. The judge does not call the planner. The orchestrator calls each in turn, writes intermediate results to a scratch section of the `HandoverDocument`, and decides whether to iterate.
-- **N is config-driven.** Add `agents.planner.max_critique_iterations: 2` to `configs/default.yaml`. Default 2.
-- **Critique is advisory, not blocking.** After N iterations, proceed with the best draft seen (lowest `validation_issues` count), do not halt. Log the iteration history to SQLite.
+- **N is config-driven.** Add `agents.planner.max_critique_iterations: 2` and `agents.planner.critique_quality_threshold: 0.8` to `configs/default.yaml`.
+- **Critique is advisory, not blocking.** After N iterations, proceed with the best draft seen (highest `quality_score`), do not halt. Log the iteration history to SQLite.
 - **Isolation.** The judge's critique of a draft is written back to the `HandoverDocument` under a `critique_history` field (see schema change below), not passed directly to the planner as a message. The planner reads the field on the next iteration.
 
 ### Schema change
@@ -208,9 +209,9 @@ class CritiqueEntry(BaseModel):
        """Run planner–judge iterations. Returns the best draft markdown."""
    ```
    - Iteration 0: draft already produced by planner.
-   - Each iteration: call `run_quality_judge` with the draft; if `validation_issues` is empty or `quality_score >= threshold`, stop.
+   - Each iteration: call `run_quality_judge` with the draft using task type `"critique"` (routes to generator/expensive tier — see Task 3); if `validation_issues` is empty or `quality_score >= config.agents.planner.critique_quality_threshold`, stop.
    - If not final iteration: append a `CritiqueEntry` to `handover.critique_history`; call `run_planner` with updated `PlannerInput` that includes the critique; get new draft.
-   - After N iterations: return the draft with the highest `quality_score`.
+   - After N iterations: return the draft with the highest `quality_score` across all iterations.
 
 4. **Call `_run_critique_loop` from `generate` endpoint** (or from the orchestrator's planner dispatch), not from within the planner agent itself.
 
@@ -277,12 +278,13 @@ The `configs/default.yaml` already has a `cost_routing` section with `enabled: f
 
 2. **Add `resolve_model(task_type: str, config: AlfredConfig) -> tuple[str, str]`** to `tools/llm.py`. Returns `(provider, model)`:
    - If `cost_routing.enabled` is `False`: return `(config.llm.provider, config.llm.model)`.
-   - `task_type in {"classify", "judge"}`: return classifier tier.
-   - `task_type in {"plan", "generate", "compile", "retro"}`: return generator tier.
+   - `task_type in {"classify", "judge"}`: return classifier tier. (`"judge"` here means observation classification within the quality judge, not draft critique.)
+   - `task_type in {"plan", "generate", "compile", "retro", "critique"}`: return generator tier. (`"critique"` is the task type for the planner–judge revision cycle — reviewing a prose draft requires the expensive model.)
    - Unknown `task_type`: fall back to generator tier and log a warning.
 
 3. **Update callers** — pass `task_type` to `resolve_model` at each `llm.complete` call site:
    - `quality_judge.py` observation classification → `"classify"`
+   - `quality_judge.py` when called from `_run_critique_loop` → caller passes `task_type="critique"` via a new optional param; default remains `"judge"`
    - `planner.py` → `"plan"`
    - `compiler.py` → `"compile"`
    - `story_generator.py` → `"generate"`
@@ -290,8 +292,8 @@ The `configs/default.yaml` already has a `cost_routing` section with `enabled: f
 
 4. **Tests** — `tests/test_tools/test_llm.py` (extend existing file):
    - `test_resolve_model_routing_disabled` — with `cost_routing.enabled=False`, always returns config defaults regardless of task type.
-   - `test_resolve_model_classify_routes_cheap` — classify task routes to classifier model.
-   - `test_resolve_model_generate_routes_expensive` — plan/generate/compile/retro route to generator model.
+   - `test_resolve_model_classify_routes_cheap` — `"classify"` and `"judge"` route to classifier model.
+   - `test_resolve_model_generate_routes_expensive` — `"plan"`, `"generate"`, `"compile"`, `"retro"`, `"critique"` all route to generator model.
    - `test_resolve_model_unknown_falls_back_to_generator` — unknown task type uses generator tier.
 
 ### Verification
@@ -386,10 +388,10 @@ Risk R5 from `architecture.md`: "HITL gate blocks indefinitely in automated runs
 
 3. **Add `hitl.timeout_seconds: 3600` to `configs/default.yaml`** (default 1 hour).
 
-4. **Update `POST /approve`** in `api.py`:
-   - On receive: call `create_pending_approval` with timeout from config.
-   - On decide: call `record_approval_decision`.
-   - Add `GET /approvals/pending` endpoint — returns all open approvals with their `expires_at`.
+4. **Two distinct approval endpoints** in `api.py`:
+   - **`POST /approvals/request`** — registers a new pending approval. Body: `{ "handover_id", "action_type", "item_id" }`. Calls `create_pending_approval` with timeout from config. Returns `{ "approval_id": str, "expires_at": str }`. This is called by the orchestrator before surfacing an action to the human.
+   - **`POST /approve`** (existing) — records a human decision on an already-pending approval. Body: `{ "approval_id", "decision": "approved"|"rejected" }`. Calls `record_approval_decision`. Returns the updated record.
+   - **`GET /approvals/pending`** — returns all open approvals with their `expires_at`.
 
 5. **Add `POST /approvals/expire`** endpoint — sweeps expired approvals, records `decision="expired"`, returns count of expired items. Intended for a cron job or manual trigger; not automatic within the API process.
 
@@ -398,7 +400,8 @@ Risk R5 from `architecture.md`: "HITL gate blocks indefinitely in automated runs
 7. **Tests** — `tests/test_api.py` (extend) and `tests/test_tools/test_persistence.py` (extend):
    - `test_create_and_retrieve_pending_approval` — create, fetch, assert fields match.
    - `test_expired_approvals_returned_correctly` — create approval with `timeout_seconds=0`; call `get_expired_approvals`; assert it appears.
-   - `test_approve_endpoint_creates_pending_record` — `POST /approve` with db configured; verify `pending_approvals` row created.
+   - `test_request_approval_endpoint_creates_pending_record` — `POST /approvals/request` with db configured; verify `pending_approvals` row created with correct `expires_at`.
+   - `test_approve_endpoint_records_decision` — seed a pending approval; `POST /approve` with `decision="approved"`; verify `decided_at` and `decision` fields set.
    - `test_expire_endpoint_marks_expired` — seed an expired pending approval; `POST /approvals/expire`; assert `decision="expired"`.
    - `test_dashboard_includes_pending_count` — assert `pending_approvals_count` key in dashboard response.
 
@@ -440,7 +443,7 @@ And answer these questions directly, one line each:
 
 ## TASK 6 — Dogfood #2
 
-**Goal:** Run a full generation → compile → execute cycle against a real BOB handover. No mocks below the LLM boundary. This is the first time all five Phase 5 components operate together end-to-end.
+**Goal:** Run a full generation → compile → execute cycle against a real BOB handover. All LLM calls are real (no mocked responses). Executor output is intentionally synthesised — the dogfood target is the judge/orchestrator pipeline, not the ML training code inside a BOB handover. This is the first time all five Phase 5 components operate together end-to-end.
 
 ### Steps
 
@@ -506,7 +509,7 @@ cat data/dogfood/handover4_run1.json | python -m json.tool
 1. **Do NOT let the planner call the quality judge directly.** The critique loop is orchestrated — the orchestrator calls each agent in turn and writes intermediate results to the `HandoverDocument`. If you find yourself passing a judge object or function reference into the planner, stop.
 2. **Do NOT let the critique loop run indefinitely.** `max_critique_iterations` is a hard cap, not a suggestion. After N iterations the orchestrator picks the best draft and moves on.
 3. **Do NOT make cost routing a runtime decision by the LLM.** The tier mapping is a deterministic config lookup in `resolve_model`. The model never decides its own tier.
-4. **Do NOT persist the compiled `HandoverDocument` in SQLite.** It is a filesystem artifact. SQLite only holds operational bookkeeping (invocation traces, approval records, velocity).
+4. **Do NOT persist the compiled `HandoverDocument` in SQLite.** It is a filesystem artifact stored at `data/handovers/{handover_id}.json`. SQLite only holds operational bookkeeping (invocation traces, approval records, velocity). The `handover_id` returned by `POST /compile` is a string key; the file path is derived from it, never stored as a blob.
 5. **Do NOT extend the schema in a way that breaks Phase 4 tests.** All new fields must have defaults. Run `pytest -v` after every schema change.
 6. **Do NOT add a new agent for compilation or critique.** `compiler.py` is a module with a single function. The critique loop logic lives in the orchestrator, not in a new agent type.
 7. **Do NOT make HITL timeout automatic within the API request cycle.** The sweep is an explicit `POST /approvals/expire` call — not a background thread, not a scheduler, not a middleware hook.
