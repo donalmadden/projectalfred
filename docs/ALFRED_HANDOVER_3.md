@@ -414,18 +414,26 @@ cat data/dogfood/handover3_run1.json | head -50
 
 ## POST-MORTEM
 
-TBD
-
-**Root causes:**
-- <fill in after execution>
+**Dogfood run:** `data/dogfood/handover3_run1.json`
+**Target:** BOB_HANDOVER_40, HO40-CHECKPOINT-1 (environment + data audit gate)
+**Provider/model:** openai / gpt-4o-mini
+**Verdict:** `proceed` — quality score 1.0, no HITL escalation, 2.3s end-to-end
 
 **What worked:**
-- <fill in after execution>
+- Full pipeline executed without mocks: RAG indexing → chunk retrieval → quality judge → structured output → persistence
+- Decision-table verdict routing correct: LLM classified observation index 0 (`proceed`), verdict looked up deterministically
+- OpenAI structured-output adapter (`json_schema` response format) worked first time — no schema validation retries
+- RAG retrieved 3 relevant chunks from the 15-chunk HO40 corpus slice in under 1s (post-model-load)
+- SQLite persistence wrote the agent invocation trace to `data/dogfood/alfred_dogfood.db` without error
 
-**What failed:**
-- <fill in after execution>
+**What failed / findings:**
+- `methodology_compliance` flags properties 3 and 4 as `False` — expected: the keyword scan in `_check_methodology_compliance` looks for literal methodology prose in the handover markdown, not executor console output. Scope is correct; keyword list needs review in Phase 5.
+- `sentence-transformers` and `openai` were not installed in the venv at task-11 start — declared in `pyproject.toml` but `pip install -e .` had not been re-run after they were added. Fix: CI should gate on `pip install -e .[dev]`.
+- Embedder model reloads on every `retrieve()` call (no process-level cache). Acceptable for CLI use; Phase 5 should cache at process level.
 
 **Forward plan:**
-<fill in after execution>
+- Phase 5: add embedder caching to `rag.py` to avoid double model load per run
+- Phase 5: revisit `_check_methodology_compliance` — scope keyword scan to handover markdown only, not executor output
+- Phase 6 CI: add `pip install -e .[dev]` gate to ensure all declared deps are present before tests run
 
 **next_handover_id:** ALFRED_HANDOVER_4 (Phase 5: Stretch Enhancements)

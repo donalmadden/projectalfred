@@ -83,8 +83,47 @@ def _complete_anthropic(
     return tool_input, tokens
 
 
+def _complete_openai(
+    prompt: str,
+    output_schema: Type[BaseModel],
+    model: str,
+) -> tuple[dict[str, Any], int]:
+    """OpenAI adapter using structured outputs (json_schema response format)."""
+    import openai
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise LLMError("OPENAI_API_KEY is not set in the environment")
+
+    client = openai.OpenAI(api_key=api_key)
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": output_schema.__name__,
+                "schema": output_schema.model_json_schema(),
+                "strict": False,
+            },
+        },
+    )
+
+    import json as _json
+    content = response.choices[0].message.content
+    if not content:
+        raise LLMError("OpenAI response contained no content")
+    tool_input = _json.loads(content)
+
+    usage = response.usage
+    tokens = int(getattr(usage, "total_tokens", 0) or 0) if usage else 0
+    return tool_input, tokens
+
+
 _PROVIDERS: dict[str, Callable[[str, Type[BaseModel], str], tuple[dict[str, Any], int]]] = {
     "anthropic": _complete_anthropic,
+    "openai": _complete_openai,
 }
 
 
