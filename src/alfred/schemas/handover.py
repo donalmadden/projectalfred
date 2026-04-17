@@ -82,6 +82,7 @@ class HandoverTask(BaseModel):
     id: str  # "0", "0.5", "1", "2", etc.
     title: str
     goal: str
+    agent_type: Optional[str] = None  # "planner" | "story_generator" | "retro_analyst"
     steps: list[str] = Field(default_factory=list)
     verification: Optional[VerificationBlock] = None
     commit_message: Optional[str] = None

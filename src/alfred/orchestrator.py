@@ -16,9 +16,23 @@ Methodology properties encoded structurally here:
 """
 from __future__ import annotations
 
+import json
+import os
+from typing import Any, Callable, Optional
+
 from alfred.schemas.checkpoint import Checkpoint, Verdict
 from alfred.schemas.config import AlfredConfig
-from alfred.schemas.handover import HandoverDocument, HandoverTask
+from alfred.schemas.handover import HandoverDocument, HandoverTask, PostMortem, TaskResult
+from alfred.schemas.agent import (
+    BoardState,
+    ExecutorOutput,
+    PlannerInput,
+    QualityJudgeInput,
+    QualityRubric,
+    RAGChunk,
+    RetroAnalystInput,
+    StoryGeneratorInput,
+)
 
 
 class CheckpointHalt(Exception):
@@ -29,58 +43,291 @@ class HumanEscalation(Exception):
     """Raised when a checkpoint returns an ESCALATE verdict requiring human decision."""
 
 
-def orchestrate(handover: HandoverDocument, config: AlfredConfig) -> HandoverDocument:
-    """
-    Execute a handover document.
+# ---------------------------------------------------------------------------
+# Agent dispatch table — replaceable for tests
+# ---------------------------------------------------------------------------
 
-    Iterates through tasks in order. For each task:
-      1. Constructs agent input from HandoverDocument + tools
-      2. Calls the appropriate agent (Planner / Story Generator / Retro Analyst)
-      3. Validates output against the agent's output schema (Pydantic enforces this)
-      4. If the task has checkpoints: calls Quality Judge
-      5. Routes based on verdict (proceed / pivot / stop / escalate)
-      6. Writes results back to the HandoverDocument before proceeding
+AgentRunner = Callable[[HandoverTask, HandoverDocument, AlfredConfig, Optional[str]], TaskResult]
 
-    Returns the updated HandoverDocument with results filled in.
-    Raises CheckpointHalt on STOP verdict.
-    Raises HumanEscalation on ESCALATE verdict.
-    """
-    raise NotImplementedError
+_AGENT_RUNNERS: dict[str, AgentRunner] = {}
+
+
+def _register_runners() -> None:
+    """Populate the dispatch table. Deferred to avoid circular imports at module load."""
+    from alfred.agents.planner import run_planner
+    from alfred.agents.story_generator import run_story_generator
+    from alfred.agents.retro_analyst import run_retro_analyst
+
+    def _planner_runner(
+        task: HandoverTask,
+        handover: HandoverDocument,
+        config: AlfredConfig,
+        db_path: Optional[str],
+    ) -> TaskResult:
+        board = _get_board_state(config)
+        velocity = _get_velocity_history(config, db_path)
+        chunks = _retrieve_rag(task.goal or task.title, config)
+        inp = PlannerInput(
+            board_state=board,
+            velocity_history=velocity,
+            prior_handover_summaries=chunks,
+            sprint_goal=task.goal or None,
+        )
+        out = run_planner(inp, provider=config.llm.provider, model=config.llm.model, db_path=db_path)
+        return TaskResult(
+            completed=True,
+            output_summary=out.draft_handover_markdown[:200],
+        )
+
+    def _story_runner(
+        task: HandoverTask,
+        handover: HandoverDocument,
+        config: AlfredConfig,
+        db_path: Optional[str],
+    ) -> TaskResult:
+        board = _get_board_state(config)
+        chunks = _retrieve_rag(task.goal or task.title, config)
+        inp = StoryGeneratorInput(
+            quality_rubric=QualityRubric(
+                criteria=["Clear title", "Acceptance criteria present"],
+                minimum_acceptance_criteria_count=2,
+                require_story_points=True,
+            ),
+            board_state=board,
+            handover_corpus_chunks=chunks,
+            generation_prompt=task.goal or None,
+        )
+        out = run_story_generator(inp, provider=config.llm.provider, model=config.llm.model, db_path=db_path)
+        summary = f"Generated {len(out.stories)} stories; {len(out.stories_failing_rubric)} failed rubric."
+        return TaskResult(completed=True, output_summary=summary)
+
+    def _retro_runner(
+        task: HandoverTask,
+        handover: HandoverDocument,
+        config: AlfredConfig,
+        db_path: Optional[str],
+    ) -> TaskResult:
+        velocity = _get_velocity_history(config, db_path)
+        chunks = _retrieve_rag(task.goal or task.title, config)
+        inp = RetroAnalystInput(
+            handover_corpus_chunks=chunks,
+            velocity_data=velocity,
+            analysis_focus=task.goal or None,
+        )
+        out = run_retro_analyst(inp, provider=config.llm.provider, model=config.llm.model, db_path=db_path)
+        return TaskResult(completed=True, output_summary=out.retrospective_summary[:200])
+
+    _AGENT_RUNNERS["planner"] = _planner_runner
+    _AGENT_RUNNERS["story_generator"] = _story_runner
+    _AGENT_RUNNERS["retro_analyst"] = _retro_runner
+
+
+def set_agent_runner(agent_type: str, runner: AgentRunner) -> None:
+    """Replace an agent runner. Tests use this to inject fakes."""
+    _AGENT_RUNNERS[agent_type] = runner
 
 
 # ---------------------------------------------------------------------------
-# Control-flow primitives — skeleton helpers that Phase 4 will implement.
-# They exist here so the shape of checkpoint-gated execution is visible
-# structurally, not just as prose in a docstring.
+# Tool helpers
 # ---------------------------------------------------------------------------
 
 
-def _dispatch_task(task: HandoverTask, handover: HandoverDocument, config: AlfredConfig) -> None:
-    """Route a task to the correct agent based on its role.
+def _get_board_state(config: AlfredConfig) -> BoardState:
+    if not config.github.org or not config.github.project_number:
+        return BoardState()
+    from alfred.tools.github_api import get_board_state
+    token = os.environ.get(config.github.token_env_var, "")
+    if not token:
+        return BoardState()
+    return get_board_state(config.github.org, config.github.project_number, token)
 
-    Phase 4 will resolve the agent from task metadata and invoke it with a
-    Pydantic-validated input constructed from the handover document plus tool
-    reads (board state, RAG retrieval, velocity history).
+
+def _get_velocity_history(config: AlfredConfig, db_path: Optional[str]) -> list:
+    path = db_path or config.database.path
+    if not path:
+        return []
+    from alfred.tools.persistence import get_velocity_history
+    return get_velocity_history(path, sprint_count=5)
+
+
+def _retrieve_rag(query: str, config: AlfredConfig) -> list[RAGChunk]:
+    if not config.rag.index_path or not query:
+        return []
+    try:
+        from alfred.tools.rag import retrieve
+        return retrieve(query, config.rag.index_path, top_k=5)
+    except Exception:
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint serialisation — Checkpoint → Quality Judge format
+# ---------------------------------------------------------------------------
+
+
+def _checkpoint_to_definition(cp: Checkpoint) -> str:
+    rows = [
+        {"observation": rule.condition, "verdict": rule.likely_verdict}
+        for rule in (cp.decision_table.rules or [])
+    ]
+    return json.dumps({"checkpoint_id": cp.id, "rows": rows})
+
+
+# ---------------------------------------------------------------------------
+# Control-flow primitives
+# ---------------------------------------------------------------------------
+
+
+def _dispatch_task(
+    task: HandoverTask,
+    handover: HandoverDocument,
+    config: AlfredConfig,
+    db_path: Optional[str],
+) -> None:
+    """Route a task to the correct agent and write the result back."""
+    if not _AGENT_RUNNERS:
+        _register_runners()
+
+    agent_type = (task.agent_type or "").lower()
+    runner = _AGENT_RUNNERS.get(agent_type)
+    if runner is None:
+        task.result = TaskResult(
+            completed=False,
+            output_summary=f"No runner registered for agent_type={agent_type!r}; task skipped.",
+        )
+        return
+
+    result = runner(task, handover, config, db_path)
+    task.result = result
+
+
+def _evaluate_task_checkpoints(
+    task: HandoverTask,
+    handover: HandoverDocument,
+    config: AlfredConfig,
+    db_path: Optional[str],
+) -> None:
+    """Evaluate each unevaluated checkpoint; route on verdict."""
+    from alfred.agents.quality_judge import run_quality_judge
+    from alfred.tools.persistence import record_checkpoint
+
+    executor_output: Optional[ExecutorOutput] = None
+    if task.result is not None:
+        executor_output = ExecutorOutput(
+            task_id=task.id,
+            console_output=task.result.output_summary,
+            files_modified=task.result.files_modified,
+        )
+
+    for cp in task.checkpoints:
+        if cp.is_evaluated:
+            continue
+
+        definition = _checkpoint_to_definition(cp)
+        judge_input = QualityJudgeInput(
+            handover_document_markdown=handover.render_markdown(),
+            checkpoint_definitions=[definition],
+            executor_output=executor_output,
+        )
+        judge_out = run_quality_judge(
+            judge_input,
+            provider=config.llm.provider,
+            model=config.llm.model,
+            db_path=db_path,
+        )
+
+        evaluations = judge_out.checkpoint_evaluations
+        ev = evaluations[0] if evaluations else None
+        verdict: Verdict = ev.verdict if ev else "escalate"
+        reasoning = ev.reasoning if ev else "No evaluation produced."
+        evidence = (executor_output.console_output[:500] if executor_output else "")
+
+        from alfred.schemas.checkpoint import CheckpointResult
+        cp.result = CheckpointResult(
+            verdict=verdict,
+            evidence_provided=evidence,
+            reasoning=reasoning,
+        )
+
+        effective_db = db_path or config.database.path
+        if effective_db:
+            try:
+                import hashlib
+                ev_hash = hashlib.sha256(evidence.encode()).hexdigest()[:16]
+                record_checkpoint(
+                    effective_db,
+                    handover_id=handover.id,
+                    checkpoint_id=cp.id,
+                    verdict=verdict,
+                    evidence_hash=ev_hash,
+                )
+            except Exception:
+                pass
+
+        _route_on_verdict(verdict, task, cp, handover)
+
+
+def _route_on_verdict(
+    verdict: Verdict,
+    task: HandoverTask,
+    checkpoint: Checkpoint,
+    handover: HandoverDocument,
+) -> None:
+    """Apply the control-flow consequence of a verdict."""
+    if verdict == "proceed":
+        return
+
+    if verdict == "pivot":
+        if task.result is not None:
+            task.result.pivot_taken = f"Pivoted at {checkpoint.id}"
+        return
+
+    if verdict == "stop":
+        if handover.post_mortem is None:
+            handover.post_mortem = PostMortem(
+                summary=f"STOP verdict at {checkpoint.id} in task {task.id}.",
+                root_causes=[checkpoint.result.reasoning if checkpoint.result else "Unknown"],
+                what_failed=[f"Task {task.id}: {task.title}"],
+            )
+        raise CheckpointHalt(
+            f"STOP at {checkpoint.id} (task {task.id}): "
+            + (checkpoint.result.reasoning if checkpoint.result else "")
+        )
+
+    if verdict == "escalate":
+        raise HumanEscalation(
+            f"ESCALATE at {checkpoint.id} (task {task.id}): human decision required. "
+            + (checkpoint.result.reasoning if checkpoint.result else "")
+        )
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
+
+def orchestrate(
+    handover: HandoverDocument,
+    config: AlfredConfig,
+    *,
+    db_path: Optional[str] = None,
+) -> HandoverDocument:
+    """Execute a handover document.
+
+    Iterates tasks in order. For each task:
+      1. If result is not yet set: dispatches to the registered agent runner.
+      2. Evaluates any unevaluated checkpoints via the Quality Judge.
+      3. Routes control flow on verdict.
+
+    Returns the updated HandoverDocument. Re-runnable: tasks with results
+    already set are not re-dispatched (statelessness — property 5).
+    Raises CheckpointHalt on STOP; raises HumanEscalation on ESCALATE.
     """
-    raise NotImplementedError
+    for task in handover.tasks:
+        if task.result is None:
+            _dispatch_task(task, handover, config, db_path)
 
+        if task.checkpoints:
+            _evaluate_task_checkpoints(task, handover, config, db_path)
 
-def _evaluate_checkpoints(task: HandoverTask, handover: HandoverDocument, config: AlfredConfig) -> Verdict:
-    """Run Quality Judge over a task's checkpoints and return the aggregate verdict.
-
-    A task with no checkpoints implicitly proceeds. A task with multiple
-    checkpoints aggregates verdicts using the most restrictive rule
-    (stop > escalate > pivot > proceed).
-    """
-    raise NotImplementedError
-
-
-def _route_on_verdict(verdict: Verdict, checkpoint: Checkpoint, handover: HandoverDocument) -> None:
-    """Apply the control-flow consequence of a verdict.
-
-    proceed  — return to the caller; the next task runs
-    pivot    — record the pivot on the handover and continue with the revised plan
-    stop     — write the failure to handover.post_mortem and raise CheckpointHalt
-    escalate — mark the handover for human review and raise HumanEscalation
-    """
-    raise NotImplementedError
+    return handover
