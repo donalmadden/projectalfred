@@ -34,7 +34,12 @@ def test_bootstrap_is_idempotent(db_path: str) -> None:
                 "SELECT name FROM sqlite_master WHERE type='table'"
             ).fetchall()
         }
-    assert {"velocity", "agent_invocations", "checkpoint_history"} <= tables
+    assert {
+        "velocity",
+        "agent_invocations",
+        "checkpoint_history",
+        "pending_approvals",
+    } <= tables
 
 
 def test_record_velocity_roundtrip(db_path: str) -> None:
@@ -55,10 +60,10 @@ def test_record_velocity_upsert(db_path: str) -> None:
 
 
 def test_get_velocity_history_ordering_and_limit(db_path: str) -> None:
-    for s in [1, 2, 3, 4, 5]:
-        persistence.record_velocity(db_path, _record(s))
+    for sprint in [1, 2, 3, 4, 5]:
+        persistence.record_velocity(db_path, _record(sprint))
     history = persistence.get_velocity_history(db_path, sprint_count=3)
-    assert [r.sprint_number for r in history] == [5, 4, 3]
+    assert [record.sprint_number for record in history] == [5, 4, 3]
 
 
 def test_get_velocity_history_zero_returns_empty(db_path: str) -> None:
@@ -79,7 +84,8 @@ def test_record_agent_invocation(db_path: str) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT agent_name, input_hash, output_hash, tokens_used, latency_ms FROM agent_invocations WHERE id=?",
+            "SELECT agent_name, input_hash, output_hash, tokens_used, latency_ms "
+            "FROM agent_invocations WHERE id=?",
             (row_id,),
         ).fetchone()
     assert row["agent_name"] == "planner"
@@ -101,13 +107,66 @@ def test_record_checkpoint(db_path: str) -> None:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT handover_id, checkpoint_id, verdict, evidence_hash FROM checkpoint_history WHERE id=?",
+            "SELECT handover_id, checkpoint_id, verdict, evidence_hash "
+            "FROM checkpoint_history WHERE id=?",
             (row_id,),
         ).fetchone()
     assert row["handover_id"] == "ALFRED_HANDOVER_3"
     assert row["checkpoint_id"] == "CHECKPOINT-1"
     assert row["verdict"] == "proceed"
     assert row["evidence_hash"] == "evid-xyz"
+
+
+def test_create_and_retrieve_pending_approval(db_path: str) -> None:
+    persistence.create_pending_approval(
+        db_path,
+        approval_id="approval-1",
+        handover_id="ALFRED_HANDOVER_4",
+        action_type="story_creation",
+        item_id="PVTI_123",
+        timeout_seconds=3600,
+    )
+
+    approvals = persistence.get_pending_approvals(db_path)
+    assert len(approvals) == 1
+    assert approvals[0]["id"] == "approval-1"
+    assert approvals[0]["handover_id"] == "ALFRED_HANDOVER_4"
+    assert approvals[0]["action_type"] == "story_creation"
+    assert approvals[0]["item_id"] == "PVTI_123"
+    assert approvals[0]["decision"] is None
+    assert approvals[0]["decided_at"] is None
+
+
+def test_expired_approvals_returned_correctly(db_path: str) -> None:
+    persistence.create_pending_approval(
+        db_path,
+        approval_id="approval-expired",
+        handover_id="ALFRED_HANDOVER_4",
+        action_type="story_creation",
+        item_id="PVTI_expired",
+        timeout_seconds=0,
+    )
+
+    expired = persistence.get_expired_approvals(db_path)
+    assert len(expired) == 1
+    assert expired[0]["id"] == "approval-expired"
+
+
+def test_record_approval_decision_updates_row(db_path: str) -> None:
+    persistence.create_pending_approval(
+        db_path,
+        approval_id="approval-2",
+        handover_id="ALFRED_HANDOVER_4",
+        action_type="story_creation",
+        item_id="PVTI_456",
+        timeout_seconds=3600,
+    )
+    persistence.record_approval_decision(db_path, "approval-2", "approved")
+
+    row = persistence.get_approval(db_path, "approval-2")
+    assert row is not None
+    assert row["decision"] == "approved"
+    assert row["decided_at"] is not None
 
 
 def test_parent_directory_is_created(tmp_path: Path) -> None:

@@ -1,20 +1,15 @@
 """
 FastAPI app — HTTP interface for Alfred.
 
-Five endpoints mirror the orchestrator's control surface:
-  POST /generate      — plan sprint: board state → draft handover
-  POST /evaluate      — quality gate: executor output + checkpoint → verdict
-  POST /approve       — HITL gate: approve or reject a pending action
-  POST /retrospective — retro analysis: corpus + velocity → pattern report
-  GET  /dashboard     — read-only: sprint state, velocity, recent checkpoint outcomes
-
-Config is loaded at startup and injectable for tests via set_config().
-All secrets are read from environment variables at call time, never from config.
+Routes cover planning, evaluation, retrospective analysis, compilation, and a
+multi-step HITL approval workflow. Config is loaded at startup and injectable
+for tests via set_config(). All secrets are read from environment variables at
+call time, never from config.
 """
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import yaml
 from fastapi import FastAPI, HTTPException
@@ -98,17 +93,31 @@ class EvaluateResponse(BaseModel):
     hitl_required: bool
 
 
-class ApproveRequest(BaseModel):
+class ApprovalRequestCreate(BaseModel):
     handover_id: str
     action_type: str  # e.g. "story_creation"
     item_id: str
-    approved: bool
-    reason: Optional[str] = None
 
 
-class ApproveResponse(BaseModel):
-    status: str  # "approved" | "rejected"
+class ApprovalRecord(BaseModel):
+    id: str
+    handover_id: str
+    action_type: str
     item_id: str
+    requested_at: str
+    expires_at: str
+    decided_at: Optional[str] = None
+    decision: Optional[str] = None
+
+
+class ApprovalRequestResponse(BaseModel):
+    approval_id: str
+    expires_at: str
+
+
+class ApproveRequest(BaseModel):
+    approval_id: str
+    decision: Literal["approved", "rejected"]
 
 
 class RetrospectiveRequest(BaseModel):
@@ -120,6 +129,7 @@ class DashboardResponse(BaseModel):
     board_state: BoardState
     velocity_history: list[VelocityRecord]
     recent_checkpoints: list[dict[str, Any]]
+    pending_approvals_count: int = 0
 
 
 class CompileRequest(BaseModel):
@@ -132,6 +142,10 @@ class CompileResponse(BaseModel):
     handover_id: str
     tasks_compiled: int
     warnings: list[str]
+
+
+class ExpireApprovalsResponse(BaseModel):
+    expired_count: int
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +187,7 @@ def _get_rag_chunks(query: str, config: AlfredConfig) -> list[RAGChunk]:
 
 
 @app.post("/generate", response_model=GenerateResponse)
-def generate(request: GenerateRequest) -> GenerateResponse:
+async def generate(request: GenerateRequest) -> GenerateResponse:
     """Plan sprint: board state + corpus context → draft handover."""
     import datetime
 
@@ -226,7 +240,7 @@ def generate(request: GenerateRequest) -> GenerateResponse:
 
 
 @app.post("/evaluate", response_model=EvaluateResponse)
-def evaluate(request: EvaluateRequest) -> EvaluateResponse:
+async def evaluate(request: EvaluateRequest) -> EvaluateResponse:
     """Quality gate: executor output + checkpoint definition → verdict."""
     from alfred.agents.quality_judge import run_quality_judge
 
@@ -259,36 +273,97 @@ def evaluate(request: EvaluateRequest) -> EvaluateResponse:
     )
 
 
-@app.post("/approve", response_model=ApproveResponse)
-def approve(request: ApproveRequest) -> ApproveResponse:
-    """HITL gate: approve or reject a pending action; persists decision."""
-    from alfred.tools.persistence import record_agent_invocation
-    import hashlib
+@app.post("/approvals/request", response_model=ApprovalRequestResponse)
+async def request_approval(request: ApprovalRequestCreate) -> ApprovalRequestResponse:
+    """Register a new pending approval with an expiry deadline."""
+    import uuid
+
+    from alfred.tools.persistence import create_pending_approval, get_approval
 
     config = get_config()
     db = config.database.path or None
+    if not db:
+        raise HTTPException(status_code=500, detail="Database path not configured")
 
-    if db:
-        record_agent_invocation(
-            db,
-            agent_name=f"hitl:{request.action_type}",
-            input_hash=hashlib.sha256(
-                f"{request.handover_id}:{request.item_id}".encode()
-            ).hexdigest()[:16],
-            output_hash=hashlib.sha256(
-                f"{request.approved}:{request.reason or ''}".encode()
-            ).hexdigest()[:16],
-            error=None if request.approved else f"rejected:{request.reason or 'no reason'}",
-        )
-
-    return ApproveResponse(
-        status="approved" if request.approved else "rejected",
+    approval_id = uuid.uuid4().hex
+    create_pending_approval(
+        db,
+        approval_id=approval_id,
+        handover_id=request.handover_id,
+        action_type=request.action_type,
         item_id=request.item_id,
+        timeout_seconds=config.hitl.timeout_seconds,
+    )
+
+    created = get_approval(db, approval_id)
+    if created is None:
+        raise HTTPException(status_code=500, detail="Approval record was not persisted")
+
+    return ApprovalRequestResponse(
+        approval_id=approval_id,
+        expires_at=created["expires_at"] or "",
     )
 
 
+@app.post("/approve", response_model=ApprovalRecord)
+async def approve(request: ApproveRequest) -> ApprovalRecord:
+    """Record a human decision on an existing pending approval."""
+    from alfred.tools.persistence import get_approval, record_approval_decision
+
+    config = get_config()
+    db = config.database.path or None
+    if not db:
+        raise HTTPException(status_code=500, detail="Database path not configured")
+
+    try:
+        record_approval_decision(db, request.approval_id, request.decision)
+    except ValueError as exc:
+        detail = str(exc)
+        status = 404 if "not found" in detail.lower() else 409
+        raise HTTPException(status_code=status, detail=detail)
+
+    updated = get_approval(db, request.approval_id)
+    if updated is None:
+        raise HTTPException(status_code=500, detail="Approval record disappeared after update")
+    return ApprovalRecord.model_validate(updated)
+
+
+@app.get("/approvals/pending", response_model=list[ApprovalRecord])
+async def list_pending_approvals() -> list[ApprovalRecord]:
+    """Return all currently open approvals."""
+    from alfred.tools.persistence import get_pending_approvals
+
+    config = get_config()
+    db = config.database.path or None
+    if not db:
+        return []
+
+    return [ApprovalRecord.model_validate(row) for row in get_pending_approvals(db)]
+
+
+@app.post("/approvals/expire", response_model=ExpireApprovalsResponse)
+async def expire_approvals() -> ExpireApprovalsResponse:
+    """Sweep expired approvals and mark them as expired."""
+    from alfred.tools.persistence import get_expired_approvals, record_approval_decision
+
+    config = get_config()
+    db = config.database.path or None
+    if not db:
+        raise HTTPException(status_code=500, detail="Database path not configured")
+
+    expired_count = 0
+    for approval in get_expired_approvals(db):
+        try:
+            record_approval_decision(db, approval["id"] or "", "expired")
+            expired_count += 1
+        except ValueError:
+            continue
+
+    return ExpireApprovalsResponse(expired_count=expired_count)
+
+
 @app.post("/retrospective", response_model=RetroAnalystOutput)
-def retrospective(request: RetrospectiveRequest) -> RetroAnalystOutput:
+async def retrospective(request: RetrospectiveRequest) -> RetroAnalystOutput:
     """Retro analysis: corpus + velocity → pattern report."""
     from alfred.agents.retro_analyst import run_retro_analyst
 
@@ -312,13 +387,12 @@ def retrospective(request: RetrospectiveRequest) -> RetroAnalystOutput:
 
 
 @app.post("/compile", response_model=CompileResponse)
-def compile_handover(request: CompileRequest) -> CompileResponse:
+async def compile_handover(request: CompileRequest) -> CompileResponse:
     """Compile an approved prose draft into a structured HandoverDocument.
 
     This endpoint is intentionally separate from POST /generate.
     It must only be called after a human has reviewed and approved the prose draft.
     """
-    import json
     import os
 
     from alfred.agents.compiler import run_compiler
@@ -358,30 +432,37 @@ def compile_handover(request: CompileRequest) -> CompileResponse:
 
 
 @app.get("/dashboard", response_model=DashboardResponse)
-def dashboard() -> DashboardResponse:
+async def dashboard() -> DashboardResponse:
     """Read-only: sprint state, velocity history, recent checkpoint outcomes."""
     import sqlite3
+    from alfred.tools.persistence import count_pending_approvals
 
     config = get_config()
     board = _get_board(config)
     velocity = _get_velocity(config)
 
     recent_checkpoints: list[dict[str, Any]] = []
+    pending_approvals_count = 0
     db = config.database.path
     if db:
         try:
             with sqlite3.connect(db) as conn:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
-                    "SELECT handover_id, checkpoint_id, verdict, created_at "
+                    "SELECT handover_id, checkpoint_id, verdict, timestamp AS created_at "
                     "FROM checkpoint_history ORDER BY id DESC LIMIT 10"
                 ).fetchall()
                 recent_checkpoints = [dict(r) for r in rows]
         except Exception:
             pass
+        try:
+            pending_approvals_count = count_pending_approvals(db)
+        except Exception:
+            pending_approvals_count = 0
 
     return DashboardResponse(
         board_state=board,
         velocity_history=velocity,
         recent_checkpoints=recent_checkpoints,
+        pending_approvals_count=pending_approvals_count,
     )

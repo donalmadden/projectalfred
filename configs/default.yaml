@@ -29,6 +29,9 @@ rag:
 database:
   path: "data/alfred.db"
 
+hitl:
+  timeout_seconds: 3600
+
 handover:
   schema_version: "1.0"
   template_path: "configs/handover_template.md"

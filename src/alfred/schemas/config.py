@@ -127,6 +127,17 @@ class DatabaseConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# HITL approval configuration
+# ---------------------------------------------------------------------------
+
+
+class HitlConfig(BaseModel):
+    """Human-in-the-loop approval settings."""
+
+    timeout_seconds: int = Field(default=3600, ge=0)
+
+
+# ---------------------------------------------------------------------------
 # Handover document settings
 # ---------------------------------------------------------------------------
 
@@ -187,5 +198,6 @@ class AlfredConfig(BaseModel):
     github: GitHubConfig = Field(default_factory=GitHubConfig)
     rag: RAGConfig = Field(default_factory=RAGConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    hitl: HitlConfig = Field(default_factory=HitlConfig)
     handover: HandoverConfig = Field(default_factory=HandoverConfig)
     agents: AgentsConfig = Field(default_factory=AgentsConfig)

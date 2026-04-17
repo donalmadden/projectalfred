@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -52,6 +52,18 @@ _SCHEMA = [
         evidence_hash TEXT
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS pending_approvals (
+        id TEXT PRIMARY KEY,
+        handover_id TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        requested_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        decided_at TEXT,
+        decision TEXT
+    )
+    """,
 ]
 
 
@@ -68,6 +80,19 @@ def _connect(db_path: str) -> sqlite3.Connection:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _approval_row_to_dict(row: sqlite3.Row) -> dict[str, Optional[str]]:
+    return {
+        "id": row["id"],
+        "handover_id": row["handover_id"],
+        "action_type": row["action_type"],
+        "item_id": row["item_id"],
+        "requested_at": row["requested_at"],
+        "expires_at": row["expires_at"],
+        "decided_at": row["decided_at"],
+        "decision": row["decision"],
+    }
 
 
 def record_velocity(db_path: str, record: VelocityRecord) -> None:
@@ -159,3 +184,114 @@ def record_checkpoint(
         )
         conn.commit()
         return int(cur.lastrowid or 0)
+
+
+def create_pending_approval(
+    db_path: str,
+    approval_id: str,
+    handover_id: str,
+    action_type: str,
+    item_id: str,
+    timeout_seconds: int,
+) -> None:
+    """Create a pending approval record with an expiry deadline."""
+    requested_at = datetime.now(timezone.utc)
+    expires_at = requested_at + timedelta(seconds=timeout_seconds)
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        cur.execute(
+            """
+            INSERT INTO pending_approvals
+                (id, handover_id, action_type, item_id, requested_at, expires_at, decided_at, decision)
+            VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)
+            """,
+            (
+                approval_id,
+                handover_id,
+                action_type,
+                item_id,
+                requested_at.isoformat(),
+                expires_at.isoformat(),
+            ),
+        )
+        conn.commit()
+
+
+def get_approval(db_path: str, approval_id: str) -> Optional[dict[str, Optional[str]]]:
+    """Return a single approval record by id, or None if not found."""
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        row = cur.execute(
+            """
+            SELECT id, handover_id, action_type, item_id, requested_at, expires_at, decided_at, decision
+            FROM pending_approvals
+            WHERE id = ?
+            """,
+            (approval_id,),
+        ).fetchone()
+    return _approval_row_to_dict(row) if row is not None else None
+
+
+def get_pending_approvals(db_path: str) -> list[dict[str, Optional[str]]]:
+    """Return all open approvals ordered by request time."""
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        rows = cur.execute(
+            """
+            SELECT id, handover_id, action_type, item_id, requested_at, expires_at, decided_at, decision
+            FROM pending_approvals
+            WHERE decision IS NULL
+            ORDER BY requested_at ASC
+            """
+        ).fetchall()
+    return [_approval_row_to_dict(row) for row in rows]
+
+
+def count_pending_approvals(db_path: str) -> int:
+    """Return the number of currently open approvals."""
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        row = cur.execute(
+            "SELECT COUNT(*) AS count FROM pending_approvals WHERE decision IS NULL"
+        ).fetchone()
+    return int(row["count"]) if row is not None else 0
+
+
+def get_expired_approvals(db_path: str) -> list[dict[str, Optional[str]]]:
+    """Return pending approvals that have passed their expiry time."""
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        rows = cur.execute(
+            """
+            SELECT id, handover_id, action_type, item_id, requested_at, expires_at, decided_at, decision
+            FROM pending_approvals
+            WHERE decision IS NULL AND expires_at <= ?
+            ORDER BY expires_at ASC
+            """,
+            (_now_iso(),),
+        ).fetchall()
+    return [_approval_row_to_dict(row) for row in rows]
+
+
+def record_approval_decision(db_path: str, approval_id: str, decision: str) -> None:
+    """Record a final decision on a pending approval."""
+    if decision not in {"approved", "rejected", "expired"}:
+        raise ValueError(f"Invalid approval decision: {decision!r}")
+
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        cur.execute(
+            """
+            UPDATE pending_approvals
+            SET decided_at = ?, decision = ?
+            WHERE id = ? AND decision IS NULL
+            """,
+            (_now_iso(), decision, approval_id),
+        )
+
+        if cur.rowcount == 0:
+            row = cur.execute(
+                "SELECT decision FROM pending_approvals WHERE id = ?",
+                (approval_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Approval not found: {approval_id}")
+            raise ValueError(
+                f"Approval '{approval_id}' already decided as {row['decision']}"
+            )
+
+        conn.commit()

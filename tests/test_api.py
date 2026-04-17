@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -49,6 +50,20 @@ def _inject_config():
 
 @pytest.fixture
 def client() -> TestClient:
+    return TestClient(app)
+
+
+@pytest.fixture
+def db_client(tmp_path: Path) -> TestClient:
+    """Client with a real database configured — required for approval endpoints."""
+    cfg = AlfredConfig()
+    cfg.llm.provider = "fake"
+    cfg.llm.model = "m"
+    cfg.database.path = str(tmp_path / "alfred.db")
+    cfg.github.org = ""
+    cfg.rag.index_path = ""
+    cfg.hitl.timeout_seconds = 3600
+    set_config(cfg)
     return TestClient(app)
 
 
@@ -168,32 +183,92 @@ def test_evaluate_stop_verdict(client: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
-# POST /approve
+# HITL approval endpoints
 # ---------------------------------------------------------------------------
 
 
-def test_approve_approved_returns_200(client: TestClient) -> None:
-    resp = client.post("/approve", json={
-        "handover_id": "TEST_HANDOVER_1",
+def test_request_approval_endpoint_creates_pending_record(
+    db_client: TestClient, tmp_path: Path
+) -> None:
+    resp = db_client.post("/approvals/request", json={
+        "handover_id": "ALFRED_HANDOVER_4",
         "action_type": "story_creation",
         "item_id": "PVTI_abc",
-        "approved": True,
     })
     assert resp.status_code == 200
-    assert resp.json()["status"] == "approved"
-    assert resp.json()["item_id"] == "PVTI_abc"
+    body = resp.json()
+    assert "approval_id" in body
+    assert "expires_at" in body
+    assert body["expires_at"]
+
+    # Verify the record is visible in the pending list
+    pending = db_client.get("/approvals/pending").json()
+    assert len(pending) == 1
+    assert pending[0]["item_id"] == "PVTI_abc"
+    assert pending[0]["decision"] is None
 
 
-def test_approve_rejected_returns_rejected_status(client: TestClient) -> None:
-    resp = client.post("/approve", json={
-        "handover_id": "TEST_HANDOVER_1",
+def test_approve_endpoint_records_decision(db_client: TestClient) -> None:
+    create_resp = db_client.post("/approvals/request", json={
+        "handover_id": "ALFRED_HANDOVER_4",
         "action_type": "story_creation",
         "item_id": "PVTI_xyz",
-        "approved": False,
-        "reason": "Story is out of scope",
+    })
+    approval_id = create_resp.json()["approval_id"]
+
+    resp = db_client.post("/approve", json={
+        "approval_id": approval_id,
+        "decision": "approved",
     })
     assert resp.status_code == 200
-    assert resp.json()["status"] == "rejected"
+    body = resp.json()
+    assert body["decision"] == "approved"
+    assert body["decided_at"] is not None
+
+    # Approval is no longer pending
+    pending = db_client.get("/approvals/pending").json()
+    assert len(pending) == 0
+
+
+def test_expire_endpoint_marks_expired(db_client: TestClient) -> None:
+    from alfred.api import get_config
+    cfg = get_config()
+    cfg.hitl.timeout_seconds = 0  # expire immediately
+
+    create_resp = db_client.post("/approvals/request", json={
+        "handover_id": "ALFRED_HANDOVER_4",
+        "action_type": "story_creation",
+        "item_id": "PVTI_expired",
+    })
+    assert create_resp.status_code == 200
+
+    resp = db_client.post("/approvals/expire")
+    assert resp.status_code == 200
+    assert resp.json()["expired_count"] == 1
+
+    pending = db_client.get("/approvals/pending").json()
+    assert len(pending) == 0
+
+
+def test_approve_not_found_returns_404(db_client: TestClient) -> None:
+    resp = db_client.post("/approve", json={
+        "approval_id": "does-not-exist",
+        "decision": "approved",
+    })
+    assert resp.status_code == 404
+
+
+def test_approve_already_decided_returns_409(db_client: TestClient) -> None:
+    create_resp = db_client.post("/approvals/request", json={
+        "handover_id": "ALFRED_HANDOVER_4",
+        "action_type": "story_creation",
+        "item_id": "PVTI_dup",
+    })
+    approval_id = create_resp.json()["approval_id"]
+
+    db_client.post("/approve", json={"approval_id": approval_id, "decision": "approved"})
+    resp = db_client.post("/approve", json={"approval_id": approval_id, "decision": "rejected"})
+    assert resp.status_code == 409
 
 
 # ---------------------------------------------------------------------------
@@ -258,3 +333,9 @@ def test_dashboard_empty_when_no_data(client: TestClient) -> None:
     body = resp.json()
     assert body["velocity_history"] == []
     assert body["recent_checkpoints"] == []
+
+
+def test_dashboard_includes_pending_count(db_client: TestClient) -> None:
+    body = db_client.get("/dashboard").json()
+    assert "pending_approvals_count" in body
+    assert body["pending_approvals_count"] == 0
