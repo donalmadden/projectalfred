@@ -60,6 +60,7 @@ def _register_runners() -> None:
     from alfred.agents.planner import run_planner
     from alfred.agents.story_generator import run_story_generator
     from alfred.agents.retro_analyst import run_retro_analyst
+    from alfred.tools.llm import resolve_model
 
     def _planner_runner(
         task: HandoverTask,
@@ -76,7 +77,8 @@ def _register_runners() -> None:
             prior_handover_summaries=chunks,
             sprint_goal=task.goal or None,
         )
-        out = run_planner(inp, provider=config.llm.provider, model=config.llm.model, db_path=db_path)
+        provider, model = resolve_model("plan", config)
+        out = run_planner(inp, provider=provider, model=model, db_path=db_path)
         return TaskResult(
             completed=True,
             output_summary=out.draft_handover_markdown[:200],
@@ -100,7 +102,8 @@ def _register_runners() -> None:
             handover_corpus_chunks=chunks,
             generation_prompt=task.goal or None,
         )
-        out = run_story_generator(inp, provider=config.llm.provider, model=config.llm.model, db_path=db_path)
+        provider, model = resolve_model("generate", config)
+        out = run_story_generator(inp, provider=provider, model=model, db_path=db_path)
         summary = f"Generated {len(out.stories)} stories; {len(out.stories_failing_rubric)} failed rubric."
         return TaskResult(completed=True, output_summary=summary)
 
@@ -117,7 +120,8 @@ def _register_runners() -> None:
             velocity_data=velocity,
             analysis_focus=task.goal or None,
         )
-        out = run_retro_analyst(inp, provider=config.llm.provider, model=config.llm.model, db_path=db_path)
+        provider, model = resolve_model("retro", config)
+        out = run_retro_analyst(inp, provider=provider, model=model, db_path=db_path)
         return TaskResult(completed=True, output_summary=out.retrospective_summary[:200])
 
     _AGENT_RUNNERS["planner"] = _planner_runner
@@ -212,6 +216,7 @@ def _evaluate_task_checkpoints(
 ) -> None:
     """Evaluate each unevaluated checkpoint; route on verdict."""
     from alfred.agents.quality_judge import run_quality_judge
+    from alfred.tools.llm import resolve_model
     from alfred.tools.persistence import record_checkpoint
 
     executor_output: Optional[ExecutorOutput] = None
@@ -232,10 +237,11 @@ def _evaluate_task_checkpoints(
             checkpoint_definitions=[definition],
             executor_output=executor_output,
         )
+        judge_provider, judge_model = resolve_model("judge", config)
         judge_out = run_quality_judge(
             judge_input,
-            provider=config.llm.provider,
-            model=config.llm.model,
+            provider=judge_provider,
+            model=judge_model,
             db_path=db_path,
         )
 
@@ -326,6 +332,7 @@ def _run_critique_loop(
 
     from alfred.agents.planner import run_planner
     from alfred.agents.quality_judge import run_quality_judge
+    from alfred.tools.llm import resolve_model
 
     planner_cfg = config.agents.planner
     max_iters: int = planner_cfg.max_critique_iterations
@@ -339,16 +346,18 @@ def _run_critique_loop(
     best_score: float = -1.0
 
     for iteration in range(max_iters):
-        # Quality judge evaluates the current draft (task_type="critique" — cost routing hook for Task 3)
+        # Quality judge evaluates the current draft using the expensive generator tier.
         judge_input = QualityJudgeInput(
             handover_document_markdown=current_draft,
             checkpoint_definitions=[],
         )
+        critique_provider, critique_model = resolve_model("critique", config)
         judge_out = run_quality_judge(
             judge_input,
-            provider=config.llm.provider,
-            model=config.llm.model,
+            provider=critique_provider,
+            model=critique_model,
             db_path=db_path,
+            task_type="critique",
         )
 
         score: float = judge_out.overall_quality_score or 0.0
@@ -375,6 +384,7 @@ def _run_critique_loop(
             board = _get_board_state(config)
             velocity = _get_velocity_history(config, db_path)
             chunks = _retrieve_rag(current_draft[:200], config)
+            plan_provider, plan_model = resolve_model("plan", config)
             planner_out = run_planner(
                 PlannerInput(
                     board_state=board,
@@ -382,8 +392,8 @@ def _run_critique_loop(
                     prior_handover_summaries=chunks,
                     prior_critique=handover.critique_history,
                 ),
-                provider=config.llm.provider,
-                model=config.llm.model,
+                provider=plan_provider,
+                model=plan_model,
                 db_path=db_path,
             )
             current_draft = planner_out.draft_handover_markdown

@@ -9,9 +9,10 @@ llm:
   max_tokens: 4096
 
 cost_routing:
-  enabled: false
-  classifier_model: ""    # Cheap model for triage (Phase 5)
-  generator_model: ""     # Strong model for generation (Phase 5)
+  enabled: true
+  provider: "openai"              # can differ from llm.provider
+  classifier_model: "gpt-4o-mini" # cheap: observation classification, triage
+  generator_model: "gpt-4o"       # expensive: planner, story gen, retro, critique
 
 github:
   org: ""                 # Your GitHub org or user

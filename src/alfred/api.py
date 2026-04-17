@@ -187,6 +187,9 @@ def generate(request: GenerateRequest) -> GenerateResponse:
     chunks = _get_rag_chunks(request.sprint_goal or "sprint planning", config)
     db_path = config.database.path or None
 
+    from alfred.tools.llm import resolve_model
+
+    plan_provider, plan_model = resolve_model("plan", config)
     planner_out = run_planner(
         PlannerInput(
             board_state=board,
@@ -194,8 +197,8 @@ def generate(request: GenerateRequest) -> GenerateResponse:
             prior_handover_summaries=chunks,
             sprint_goal=request.sprint_goal,
         ),
-        provider=config.llm.provider,
-        model=config.llm.model,
+        provider=plan_provider,
+        model=plan_model,
         db_path=db_path,
     )
 
@@ -227,16 +230,19 @@ def evaluate(request: EvaluateRequest) -> EvaluateResponse:
     """Quality gate: executor output + checkpoint definition → verdict."""
     from alfred.agents.quality_judge import run_quality_judge
 
+    from alfred.tools.llm import resolve_model
+
     config = get_config()
     judge_input = QualityJudgeInput(
         handover_document_markdown=request.handover_document_markdown,
         checkpoint_definitions=[request.checkpoint_definition],
         executor_output=request.executor_output,
     )
+    judge_provider, judge_model = resolve_model("judge", config)
     out = run_quality_judge(
         judge_input,
-        provider=config.llm.provider,
-        model=config.llm.model,
+        provider=judge_provider,
+        model=judge_model,
         db_path=config.database.path or None,
     )
 
@@ -286,9 +292,12 @@ def retrospective(request: RetrospectiveRequest) -> RetroAnalystOutput:
     """Retro analysis: corpus + velocity → pattern report."""
     from alfred.agents.retro_analyst import run_retro_analyst
 
+    from alfred.tools.llm import resolve_model
+
     config = get_config()
     velocity = _get_velocity(config)
     chunks = _get_rag_chunks(request.analysis_focus or "retrospective patterns", config)
+    retro_provider, retro_model = resolve_model("retro", config)
 
     return run_retro_analyst(
         RetroAnalystInput(
@@ -296,8 +305,8 @@ def retrospective(request: RetrospectiveRequest) -> RetroAnalystOutput:
             velocity_data=velocity,
             analysis_focus=request.analysis_focus,
         ),
-        provider=config.llm.provider,
-        model=config.llm.model,
+        provider=retro_provider,
+        model=retro_model,
         db_path=config.database.path or None,
     )
 
@@ -315,18 +324,21 @@ def compile_handover(request: CompileRequest) -> CompileResponse:
     from alfred.agents.compiler import run_compiler
     from alfred.schemas.agent import CompilerInput
 
+    from alfred.tools.llm import resolve_model
+
     config = get_config()
     compiler_input = CompilerInput(
         draft_handover_markdown=request.draft_handover_markdown,
         handover_id=request.handover_id,
         author=request.author,
     )
+    compile_provider, compile_model = resolve_model("compile", config)
 
     try:
         result = run_compiler(
             compiler_input,
-            provider=config.llm.provider,
-            model=config.llm.model,
+            provider=compile_provider,
+            model=compile_model,
             db_path=config.database.path or None,
         )
     except ValueError as exc:

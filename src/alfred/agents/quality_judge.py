@@ -196,8 +196,20 @@ def run_quality_judge(
     provider: str = "anthropic",
     model: str = "claude-sonnet-4-6",
     db_path: Optional[str] = None,
+    task_type: str = "judge",
+    config: Optional[object] = None,
 ) -> QualityJudgeOutput:
-    """Evaluate checkpoints and produce verdicts. Never modifies any artifact."""
+    """Evaluate checkpoints and produce verdicts. Never modifies any artifact.
+
+    task_type controls model-tier routing when config is supplied:
+      "judge"    → classifier (cheap) tier — default for checkpoint evaluation
+      "critique" → generator (expensive) tier — used in the critique loop
+    """
+    from alfred.tools.llm import resolve_model as _resolve_model
+
+    if config is not None:
+        provider, model = _resolve_model(task_type, config)
+
     executor_text = ""
     if input.executor_output is not None:
         eo = input.executor_output

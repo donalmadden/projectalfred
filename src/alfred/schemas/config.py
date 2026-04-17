@@ -53,6 +53,7 @@ class CostRoutingConfig(BaseModel):
     """
 
     enabled: bool = False
+    provider: str = ""  # can differ from llm.provider; falls back to llm.provider if empty
     classifier_model: str = ""
     generator_model: str = ""
 

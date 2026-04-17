@@ -100,6 +100,87 @@ def test_complete_logs_success(
     assert rows[0]["output_hash"] is not None
 
 
+def test_resolve_model_routing_disabled() -> None:
+    """When cost_routing.enabled is False, always return default llm config."""
+    from alfred.schemas.config import AlfredConfig, CostRoutingConfig, LLMConfig
+
+    config = AlfredConfig()
+    config.llm = LLMConfig(provider="anthropic", model="default-model")
+    config.cost_routing = CostRoutingConfig(
+        enabled=False,
+        provider="openai",
+        classifier_model="gpt-4o-mini",
+        generator_model="gpt-4o",
+    )
+
+    for task_type in ["classify", "judge", "plan", "generate", "compile", "retro", "critique", "unknown"]:
+        p, m = llm.resolve_model(task_type, config)
+        assert p == "anthropic"
+        assert m == "default-model"
+
+
+def test_resolve_model_classify_routes_cheap() -> None:
+    """'classify' and 'judge' route to the classifier (cheap) tier."""
+    from alfred.schemas.config import AlfredConfig, CostRoutingConfig, LLMConfig
+
+    config = AlfredConfig()
+    config.llm = LLMConfig(provider="anthropic", model="default-model")
+    config.cost_routing = CostRoutingConfig(
+        enabled=True,
+        provider="openai",
+        classifier_model="gpt-4o-mini",
+        generator_model="gpt-4o",
+    )
+
+    for task_type in ["classify", "judge"]:
+        p, m = llm.resolve_model(task_type, config)
+        assert p == "openai"
+        assert m == "gpt-4o-mini"
+
+
+def test_resolve_model_generate_routes_expensive() -> None:
+    """plan/generate/compile/retro/critique all route to the generator (expensive) tier."""
+    from alfred.schemas.config import AlfredConfig, CostRoutingConfig, LLMConfig
+
+    config = AlfredConfig()
+    config.llm = LLMConfig(provider="anthropic", model="default-model")
+    config.cost_routing = CostRoutingConfig(
+        enabled=True,
+        provider="openai",
+        classifier_model="gpt-4o-mini",
+        generator_model="gpt-4o",
+    )
+
+    for task_type in ["plan", "generate", "compile", "retro", "critique"]:
+        p, m = llm.resolve_model(task_type, config)
+        assert p == "openai"
+        assert m == "gpt-4o"
+
+
+def test_resolve_model_unknown_falls_back_to_generator() -> None:
+    """Unknown task_type warns and falls back to the generator tier."""
+    import warnings
+    from alfred.schemas.config import AlfredConfig, CostRoutingConfig, LLMConfig
+
+    config = AlfredConfig()
+    config.llm = LLMConfig(provider="anthropic", model="default-model")
+    config.cost_routing = CostRoutingConfig(
+        enabled=True,
+        provider="openai",
+        classifier_model="gpt-4o-mini",
+        generator_model="gpt-4o",
+    )
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        p, m = llm.resolve_model("totally-unknown", config)
+
+    assert p == "openai"
+    assert m == "gpt-4o"
+    assert len(w) == 1
+    assert "totally-unknown" in str(w[0].message)
+
+
 def test_complete_logs_retry_attempts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

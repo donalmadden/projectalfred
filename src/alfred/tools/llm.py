@@ -126,6 +126,41 @@ _PROVIDERS: dict[str, Callable[[str, Type[BaseModel], str], tuple[dict[str, Any]
     "openai": _complete_openai,
 }
 
+# Task types that route to the cheap classifier tier.
+_CLASSIFY_TASKS = {"classify", "judge"}
+
+# Task types that route to the expensive generator tier.
+_GENERATE_TASKS = {"plan", "generate", "compile", "retro", "critique"}
+
+
+def resolve_model(task_type: str, config: Any) -> tuple[str, str]:
+    """Return (provider, model) for the given task type.
+
+    When cost_routing is disabled, always returns the default LLM config.
+    classify/judge → cheap classifier tier.
+    plan/generate/compile/retro/critique → expensive generator tier.
+    Unknown task_type → generator tier (with a warning).
+    """
+    import logging
+    import warnings
+
+    cr = config.cost_routing
+    if not cr.enabled:
+        return config.llm.provider, config.llm.model
+
+    provider = cr.provider if cr.provider else config.llm.provider
+
+    if task_type in _CLASSIFY_TASKS:
+        return provider, cr.classifier_model
+    if task_type in _GENERATE_TASKS:
+        return provider, cr.generator_model
+
+    warnings.warn(
+        f"resolve_model: unknown task_type {task_type!r}; falling back to generator tier",
+        stacklevel=2,
+    )
+    return provider, cr.generator_model
+
 
 # ---------------------------------------------------------------------------
 # Public entry point

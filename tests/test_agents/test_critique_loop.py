@@ -78,7 +78,7 @@ def test_loop_stops_when_judge_passes_on_second_iteration(monkeypatch: Any) -> N
     judge_calls: list[QualityJudgeInput] = []
     planner_calls: list[PlannerInput] = []
 
-    def mock_judge(inp: QualityJudgeInput, *, provider: str, model: str, db_path: Optional[str] = None) -> QualityJudgeOutput:
+    def mock_judge(inp: QualityJudgeInput, *, provider: str, model: str, db_path: Optional[str] = None, **kwargs: Any) -> QualityJudgeOutput:
         judge_calls.append(inp)
         return _judge_failing() if len(judge_calls) == 1 else _judge_passing()
 
@@ -111,7 +111,7 @@ def test_loop_stops_at_max_iterations_when_judge_always_fails(monkeypatch: Any) 
     judge_calls: list[QualityJudgeInput] = []
     scores = [0.4, 0.6]
 
-    def mock_judge(inp: QualityJudgeInput, *, provider: str, model: str, db_path: Optional[str] = None) -> QualityJudgeOutput:
+    def mock_judge(inp: QualityJudgeInput, *, provider: str, model: str, db_path: Optional[str] = None, **kwargs: Any) -> QualityJudgeOutput:
         score = scores[min(len(judge_calls), len(scores) - 1)]
         judge_calls.append(inp)
         return _judge_failing(score=score)
@@ -142,7 +142,7 @@ def test_loop_stops_at_max_iterations_when_judge_always_fails(monkeypatch: Any) 
 def test_critique_history_written_to_handover(monkeypatch: Any) -> None:
     """critique_history entries are appended to the document after each failing iteration."""
 
-    def mock_judge(inp: QualityJudgeInput, *, provider: str, model: str, db_path: Optional[str] = None) -> QualityJudgeOutput:
+    def mock_judge(inp: QualityJudgeInput, *, provider: str, model: str, db_path: Optional[str] = None, **kwargs: Any) -> QualityJudgeOutput:
         return _judge_failing("Needs a checkpoint.", score=0.5)
 
     def mock_planner(inp: PlannerInput, *, provider: str, model: str, db_path: Optional[str] = None) -> PlannerOutput:
@@ -172,7 +172,7 @@ def test_planner_receives_prior_critique_on_revision(monkeypatch: Any) -> None:
     judge_calls: list[QualityJudgeInput] = []
     planner_inputs: list[PlannerInput] = []
 
-    def mock_judge(inp: QualityJudgeInput, *, provider: str, model: str, db_path: Optional[str] = None) -> QualityJudgeOutput:
+    def mock_judge(inp: QualityJudgeInput, *, provider: str, model: str, db_path: Optional[str] = None, **kwargs: Any) -> QualityJudgeOutput:
         judge_calls.append(inp)
         return _judge_failing("Add a proper checkpoint section.") if len(judge_calls) == 1 else _judge_passing()
 
