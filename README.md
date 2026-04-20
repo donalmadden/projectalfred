@@ -6,12 +6,13 @@ Alfred operationalises a specific methodology for human+AI software development:
 
 *"Shall I take care of that, sir?"*
 
+[![CI](https://github.com/donal/projectalfred/actions/workflows/ci.yml/badge.svg)](https://github.com/donal/projectalfred/actions/workflows/ci.yml)
+
 ## Status
 
-- Core platform implemented through Phase 5.
+- Core platform implemented through Phase 6.
 - Current runtime includes schemas, four agent roles, four tool integrations, a hand-rolled orchestrator, a handover compiler, and a FastAPI API.
-- Local test snapshot: `127 passed, 3 skipped` from [`docs/scratch/test_out1.txt`](docs/scratch/test_out1.txt).
-- Phase 6 is planned but not yet implemented: property tests, eval harness, coverage gates, CI pipeline, and test-hardening docs.
+- Phase 6 complete: property tests (Hypothesis), eval harness, coverage gates (≥ 80% global), and a 5-stage CI pipeline.
 - Phase 7+ work remains open: deployment packaging, Docker/runtime polish, and broader governance hardening.
 
 ## The Problem
@@ -83,9 +84,9 @@ The currently implemented HTTP entrypoints are:
 | Critique loop and cost routing | Implemented |
 | Human-in-the-loop approval with timeout | Implemented |
 | Dashboard/API visibility | Implemented at basic read-model level |
-| Evaluation harness | Planned in Phase 6 |
-| Property-based tests | Planned in Phase 6 |
-| Coverage gates and CI pipeline | Planned in Phase 6 |
+| Evaluation harness | Implemented (Phase 6) |
+| Property-based tests | Implemented (Phase 6) |
+| Coverage gates and CI pipeline | Implemented (Phase 6) |
 | Deployment/runtime packaging | Planned in Phase 7 |
 | Enterprise governance hardening | Planned in later phases |
 
@@ -95,7 +96,21 @@ From the repo root:
 
 ```bash
 pip install -e '.[dev]'
-pytest -v --tb=short
+
+# Unit tests
+pytest tests/ --ignore=tests/property -q
+
+# Property tests (Hypothesis)
+pytest tests/property/ -v
+
+# Eval harness (deterministic fixtures, no API keys required)
+python evals/run_evals.py
+
+# Full suite with coverage gate
+pytest --cov=alfred --cov-fail-under=80 -q --tb=short
+python scripts/check_coverage.py
+
+# API server
 uvicorn alfred.api:app --reload
 ```
 
@@ -119,8 +134,6 @@ Phase 5 closed with a successful generation → compile → execute → checkpoi
 
 Alfred is not production-ready yet. The main unfinished areas are:
 
-- Phase 6 quality infrastructure: eval harness, property tests, coverage enforcement, CI
-- canonical-output hardening for generated Alfred handovers
 - deployment/runtime packaging
 - Docker and operational polish
 - broader governance and enterprise-readiness work

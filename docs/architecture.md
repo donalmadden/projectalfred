@@ -404,6 +404,70 @@ No agent writes to the board directly. Board writes require a HITL approval gate
 
 ---
 
+## Section 8: Testing Strategy
+
+Phase 6 adds a four-layer test pyramid. Each layer targets a different failure mode; together they enforce correctness end-to-end without requiring live API keys.
+
+### Layer 1 — Unit tests (`tests/`, excluding `tests/property/`)
+
+Standard pytest suite. Tests individual functions: schema validation, orchestrator task dispatch, agent runners with a mocked LLM provider, tool contracts, and API endpoints via `TestClient`. Excludes the property and eval layers.
+
+Run: `pytest tests/ --ignore=tests/property -q`
+
+### Layer 2 — Property tests (`tests/property/`)
+
+Hypothesis-based generative tests. Four modules:
+
+| Module | What it verifies |
+|---|---|
+| `test_schemas.py` | 9 Pydantic models round-trip through `model_dump(mode="json")` + `model_validate()` without data loss |
+| `test_orchestrator.py` | Tasks with pre-set results are never re-dispatched; STOP checkpoints raise `CheckpointHalt`; ESCALATE raises `HumanEscalation` |
+| `test_tools.py` | Unknown provider raises `LLMError`; `/compile` returns 422 on malformed input |
+| `test_planner_output.py` | `run_planner()` preserves the LLM's draft markdown verbatim |
+
+All suites run at `max_examples=100`. The Hypothesis database is cached in CI keyed on `pyproject.toml`.
+
+Run: `pytest tests/property/ -v`
+
+### Layer 3 — Eval harness (`evals/`)
+
+Deterministic fixture scoring against golden inputs/outputs. No live API keys required — the LLM is replaced by a `"mock_eval"` provider installed per fixture.
+
+Three fixtures ship in Phase 6:
+
+| Fixture | Scenario |
+|---|---|
+| `fixture_01_happy_path_orchestration.json` | Two pre-completed tasks; orchestrator returns document without re-dispatching |
+| `fixture_02_checkpoint_gate_rejection.json` | STOP checkpoint verdict raises `CheckpointHalt` |
+| `fixture_03_planner_output_structure.json` | Planner returns structured output with correct markdown content |
+
+Fixtures are validated against `evals/fixtures/schema.json` (JSON Schema draft-07) before scoring. Pass rate must meet `EVAL_PASS_THRESHOLD` (default 0.8).
+
+Run: `python evals/run_evals.py`
+
+### Layer 4 — Coverage gates (`scripts/`)
+
+Two gates run after the full test suite:
+
+1. **Global gate** — `pytest --cov=alfred --cov-fail-under=80` enforces ≥ 80% global coverage.
+2. **Per-module gate** — `scripts/check_coverage.py` reads `coverage.json` against thresholds in `scripts/coverage_thresholds.json`. Current per-module thresholds:
+   - `src/alfred/orchestrator.py` — 79% (structural gap from external I/O; acknowledged)
+   - `src/alfred/agents/planner.py` — 80%
+
+Coverage gaps and exclusion policy are documented in [`docs/coverage_baseline.md`](coverage_baseline.md).
+
+### CI pipeline (`.github/workflows/ci.yml`)
+
+Five ordered stages on every push/PR to `main`:
+
+```
+lint → unit-tests → property-tests → evals → coverage-gate
+```
+
+Each stage gates the next via `needs:`. The `pyright` step is advisory (`continue-on-error: true`) due to 30 pre-existing type errors predating Phase 6.
+
+---
+
 ## Section 7: Phase 3 Scaffold Specification
 
 Phase 3 creates the repository structure that Phase 4 implementation fills in. Every file listed here is a stub: it has the correct module structure and docstring, but no implementation. This lets Phase 4 work in parallel without import errors.
