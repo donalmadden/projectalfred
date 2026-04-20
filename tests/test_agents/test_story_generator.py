@@ -1,7 +1,6 @@
 """Tests for the Story Generator agent."""
 from __future__ import annotations
 
-from datetime import date
 from typing import Any
 
 import pytest
@@ -16,7 +15,6 @@ from alfred.schemas.agent import (
     StoryGeneratorOutput,
 )
 from alfred.tools import llm
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -160,6 +160,7 @@ def test_resolve_model_generate_routes_expensive() -> None:
 def test_resolve_model_unknown_falls_back_to_generator() -> None:
     """Unknown task_type warns and falls back to the generator tier."""
     import warnings
+
     from alfred.schemas.config import AlfredConfig, CostRoutingConfig, LLMConfig
 
     config = AlfredConfig()

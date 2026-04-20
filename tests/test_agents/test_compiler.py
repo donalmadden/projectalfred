@@ -10,7 +10,6 @@ from alfred.agents import compiler
 from alfred.schemas.agent import CompilerInput
 from alfred.tools import llm
 
-
 # ---------------------------------------------------------------------------
 # Fake LLM provider helpers
 # ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ _PROJECT_ROOT = _EVALS_DIR.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from evals.scorer import EvalResult, score_fixture  # noqa: E402
+from evals.scorer import EvalResult, score_fixture  # noqa: E402,I001
 
 
 # ---------------------------------------------------------------------------

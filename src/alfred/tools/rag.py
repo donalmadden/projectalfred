@@ -14,8 +14,9 @@ deterministic embedder via `set_embedder`.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Optional
 
 from alfred.schemas.agent import RAGChunk
 

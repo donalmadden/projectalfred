@@ -10,7 +10,6 @@ from alfred.agents import quality_judge
 from alfred.schemas.agent import ExecutorOutput, QualityJudgeInput
 from alfred.tools import llm
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

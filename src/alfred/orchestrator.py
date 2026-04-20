@@ -18,11 +18,9 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Optional
 
-from alfred.schemas.checkpoint import Checkpoint, Verdict
-from alfred.schemas.config import AlfredConfig
-from alfred.schemas.handover import HandoverDocument, HandoverTask, PostMortem, TaskResult
 from alfred.schemas.agent import (
     BoardState,
     ExecutorOutput,
@@ -33,9 +31,15 @@ from alfred.schemas.agent import (
     RetroAnalystInput,
     StoryGeneratorInput,
 )
-
-
-from alfred.schemas.handover import CritiqueEntry  # noqa: E401 (needed before class defs)
+from alfred.schemas.checkpoint import Checkpoint, Verdict
+from alfred.schemas.config import AlfredConfig
+from alfred.schemas.handover import (
+    CritiqueEntry,  # noqa: E401 (needed before class defs)
+    HandoverDocument,
+    HandoverTask,
+    PostMortem,
+    TaskResult,
+)
 
 
 class CheckpointHalt(Exception):
@@ -58,8 +62,8 @@ _AGENT_RUNNERS: dict[str, AgentRunner] = {}
 def _register_runners() -> None:
     """Populate the dispatch table. Deferred to avoid circular imports at module load."""
     from alfred.agents.planner import run_planner
-    from alfred.agents.story_generator import run_story_generator
     from alfred.agents.retro_analyst import run_retro_analyst
+    from alfred.agents.story_generator import run_story_generator
     from alfred.tools.llm import resolve_model
 
     def _planner_runner(

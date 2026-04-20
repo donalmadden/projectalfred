@@ -4,8 +4,6 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Optional
 
-import pytest
-
 from alfred.orchestrator import _run_critique_loop
 from alfred.schemas.agent import (
     PlannerInput,
@@ -14,9 +12,8 @@ from alfred.schemas.agent import (
     QualityJudgeOutput,
     ValidationIssue,
 )
-from alfred.schemas.config import AlfredConfig, AgentsConfig, PlannerAgentConfig
+from alfred.schemas.config import AgentsConfig, AlfredConfig, PlannerAgentConfig
 from alfred.schemas.handover import CritiqueEntry, HandoverContext, HandoverDocument
-
 
 # ---------------------------------------------------------------------------
 # Helpers

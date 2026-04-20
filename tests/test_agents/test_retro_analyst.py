@@ -8,14 +8,12 @@ import pytest
 
 from alfred.agents import retro_analyst
 from alfred.schemas.agent import (
-    MetricsHistory,
     RAGChunk,
     RetroAnalystInput,
     RetroAnalystOutput,
     VelocityRecord,
 )
 from alfred.tools import llm
-
 
 # ---------------------------------------------------------------------------
 # Helpers

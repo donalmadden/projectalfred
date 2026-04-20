@@ -362,7 +362,7 @@ class HandoverDocument(BaseModel):
         lines = text.splitlines()
 
         # 1. Title
-        title_line = next((l for l in lines if l.startswith("# ")), "")
+        title_line = next((ln for ln in lines if ln.startswith("# ")), "")
         parsed_id, parsed_title, parsed_author = _parse_title_line(title_line)
         doc_id = document_id or parsed_id
 
@@ -438,7 +438,6 @@ def _format_document_title(doc_id: str, title: str) -> str:
 
 
 def _render_checkpoint(cp: "Checkpoint") -> list[str]:
-    from alfred.schemas.checkpoint import Verdict
 
     lines: list[str] = []
     lines.append(f"### {cp.id}\n")
@@ -615,9 +614,9 @@ def _parse_context_section(sections: dict[str, str]) -> HandoverContext:
     wc_m = re.search(r"\*\*What changes?:\*\*\n((?:\d+\. .+\n?)+)", full_text)
     if wc_m:
         what_changes = [
-            re.sub(r"^\d+\.\s*", "", l).strip()
-            for l in wc_m.group(1).splitlines()
-            if l.strip()
+            re.sub(r"^\d+\.\s*", "", ln).strip()
+            for ln in wc_m.group(1).splitlines()
+            if ln.strip()
         ]
     wnc_m = re.search(r"\*\*What does NOT change[^:]*:\*\*\s*(.+)", full_text)
     if wnc_m:
@@ -768,7 +767,12 @@ def _extract_commit_message(body: str) -> Optional[str]:
 
 def _extract_checkpoints_from_body(body: str) -> list["Checkpoint"]:
     """Extract CHECKPOINT-N subsections from a task body."""
-    from alfred.schemas.checkpoint import Checkpoint, CheckpointResult, DecisionRule, DecisionTable, Verdict
+    from alfred.schemas.checkpoint import (
+        Checkpoint,
+        CheckpointResult,
+        DecisionRule,
+        DecisionTable,
+    )
 
     checkpoints = []
     cp_pattern = re.compile(

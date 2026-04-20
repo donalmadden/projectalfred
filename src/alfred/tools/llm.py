@@ -19,7 +19,8 @@ from __future__ import annotations
 import hashlib
 import os
 import time
-from typing import Any, Callable, Optional, Type, TypeVar
+from collections.abc import Callable
+from typing import Any, Optional, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -39,7 +40,7 @@ class LLMError(RuntimeError):
 
 def _complete_anthropic(
     prompt: str,
-    output_schema: Type[BaseModel],
+    output_schema: type[BaseModel],
     model: str,
 ) -> tuple[dict[str, Any], int]:
     """Anthropic adapter. Returns (tool_input_dict, total_tokens)."""
@@ -85,7 +86,7 @@ def _complete_anthropic(
 
 def _complete_openai(
     prompt: str,
-    output_schema: Type[BaseModel],
+    output_schema: type[BaseModel],
     model: str,
 ) -> tuple[dict[str, Any], int]:
     """OpenAI adapter using structured outputs (json_schema response format)."""
@@ -121,7 +122,7 @@ def _complete_openai(
     return tool_input, tokens
 
 
-_PROVIDERS: dict[str, Callable[[str, Type[BaseModel], str], tuple[dict[str, Any], int]]] = {
+_PROVIDERS: dict[str, Callable[[str, type[BaseModel], str], tuple[dict[str, Any], int]]] = {
     "anthropic": _complete_anthropic,
     "openai": _complete_openai,
 }
@@ -141,7 +142,6 @@ def resolve_model(task_type: str, config: Any) -> tuple[str, str]:
     plan/generate/compile/retro/critique → expensive generator tier.
     Unknown task_type → generator tier (with a warning).
     """
-    import logging
     import warnings
 
     cr = config.cost_routing
@@ -173,7 +173,7 @@ def _hash(text: str) -> str:
 
 def complete(
     prompt: str,
-    output_schema: Type[T],
+    output_schema: type[T],
     provider: str,
     model: str,
     *,

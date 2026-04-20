@@ -10,17 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from alfred.api import app, set_config
-from alfred.schemas.agent import (
-    BoardState,
-    PlannerOutput,
-    QualityJudgeOutput,
-    CheckpointEvaluation,
-    RetroAnalystOutput,
-    VelocityRecord,
-)
 from alfred.schemas.config import AlfredConfig
 from alfred.tools import llm
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -157,7 +148,6 @@ def test_generate_injects_git_history_into_planner_prompt() -> None:
     """The /generate path must call read_git_log() and pass its output into the
     planner prompt so ### Git History is grounded in real repository state.
     """
-    from unittest.mock import patch
 
     cfg = AlfredConfig()
     cfg.llm.provider = "fake"

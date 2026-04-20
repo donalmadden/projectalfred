@@ -3,10 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
-
-from alfred.schemas.handover import HandoverDocument, HandoverContext, PostMortem
-
+from alfred.schemas.handover import HandoverContext, HandoverDocument
 
 # ---------------------------------------------------------------------------
 # Fixtures

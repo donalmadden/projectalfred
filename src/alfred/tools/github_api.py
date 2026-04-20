@@ -11,8 +11,9 @@ Non-2xx responses and GraphQL `errors` arrays both raise GitHubAPIError.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from datetime import date, timedelta
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from alfred.schemas.agent import BoardState, BoardStory
 

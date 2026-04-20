@@ -22,7 +22,6 @@ from alfred.schemas.agent import (
 )
 from alfred.tools import llm
 
-
 # ---------------------------------------------------------------------------
 # Deterministic velocity trend computation
 # ---------------------------------------------------------------------------

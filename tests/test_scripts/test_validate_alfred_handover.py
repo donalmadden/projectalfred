@@ -13,7 +13,6 @@ import pytest
 
 from scripts.validate_alfred_handover import validate
 
-
 # ---------------------------------------------------------------------------
 # Minimal valid document used as the baseline for all mutation tests
 # ---------------------------------------------------------------------------
