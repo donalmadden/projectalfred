@@ -362,18 +362,25 @@ pytest tests/test_schemas/test_handover_output_profile.py tests/test_agents/test
 
 ## POST-MORTEM
 
-> **Instruction to executor:** After implementation, fill in this section before closing the work. The next planner or reviewer should be able to cold-start from this artifact alone.
-
 **What worked:**
-- *executor to fill*
+- Fail-closed validator design: heading inspection skips fenced code blocks, so `### Git History` in an example block does not satisfy the contract. The parametrised H2 mutation tests proved all six required sections are independently enforced.
+- Additive schema approach for `HandoverDocument`: new `what_exists_today` / `git_history` fields use `default_factory=list`, so all BOB/legacy corpus documents parse cleanly with both fields empty — zero changes to existing behaviour.
+- Planner prompt fork (TBD marker vs GIT HISTORY block): a single boolean at prompt-build time produces clean, unambiguous instructions to the model without any runtime branching complexity.
+- Round-trip tests (render → parse → assert) proved end-to-end schema correctness: if the renderer and parser disagree, the test catches it immediately.
+- `tests/test_scripts/` package alongside `tests/test_agents/` etc. was a natural extension of the existing layout with no tree reorganisation.
 
 **What was harder than expected:**
-- *executor to fill*
+- `unittest.mock.patch` targeting: initial `read_git_log` import was inside the `generate()` function body. `patch("alfred.api.read_git_log")` raised `AttributeError` because the name didn't exist in the module's `__dict__`. Resolved by hoisting the import to module level — the patch then worked cleanly. This is a recurring Python mocking footgun.
+- Artifact gap on Task 2 closure: the scaffold wiring was complete, but `ALFRED_HANDOVER_5_DRAFT.md` had been generated before the task was finished and still lacked `### Git History`. Required an explicit repair step after an architect review flagged the miss. This confirmed the value of the validator — a human review caught what the tooling would not have caught without it.
 
 **Decisions made during execution (deviations from this plan):**
-- *executor to fill — each deviation must include: what changed, why, who approved*
+- Task 2 closure (Donal approved): inserted real git history into `docs/ALFRED_HANDOVER_5_DRAFT.md` as a post-hoc repair after architect review. The task plan called for wiring the scaffold; the artifact repair was an unplanned extra step needed to make the deliverable actually pass the validator.
+- `configs/alfred_handover_template.md` naming (no approval needed — additive): the canonical template was placed at `configs/alfred_handover_template.md` to distinguish Alfred house-style from the generic `configs/handover_template.md`. No existing file was renamed.
 
 **Forward plan:**
-- *executor to fill*
+- `docs/ALFRED_HANDOVER_5.md` is the canonical Phase 6 planning artifact. Executor cold-starts from that document.
+- Coverage thresholds (global 80%, `orchestrator.py` 90%, `planner.py` 85%) are Planner proposals — a human must confirm or override before Phase 6 Task 3 begins.
+- Eval pass threshold (default 1.0) — consider relaxing to 0.8 during Phase 6 while the fixture library is being authored (Phase 6 Open Question 2).
+- All five open questions in `ALFRED_HANDOVER_5.md` require human answers before the executor starts.
 
 **next_handover_id:** ALFRED_HANDOVER_5

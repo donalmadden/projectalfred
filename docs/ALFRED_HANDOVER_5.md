@@ -1,18 +1,15 @@
-
-# Alfred — Phase 6 Handover Draft
-
-**Status: DRAFT — awaiting human approval before becoming protocol**
+# Alfred's Handover Document #5 — Phase 6
 
 ---
 
 ## CONTEXT — READ THIS FIRST
 
 **schema_version:** 1.0
-**id:** ALFRED_HANDOVER_5_DRAFT
+**id:** ALFRED_HANDOVER_5
 **date:** 2026-04-20
 **author:** Planner Agent (reasoning only; no execution authority)
 **previous_handover:** ALFRED_HANDOVER_4
-**baseline_state:** Phase 5 is complete. Phase-close state is commit `fd724e1` (`phase5: task 6 — dogfood #2`). Executable runtime behavior validated at commit `79e2ce5` (`phase5: task 5 — hitl timeout`) and documented in `ALFRED_HANDOVER_4.md`. This file is the scrubbed generation artifact, not yet the canonical Phase 6 protocol. After human approval, promote/copy it to `docs/ALFRED_HANDOVER_5.md`, update the handover id to `ALFRED_HANDOVER_5`, and only then treat it as the executor cold-start artifact.
+**baseline_state:** Phase 5 is complete and the output-hardening phase (ALFRED_HANDOVER_4_OUTPUT_HARDENING) is closed. The canonical Phase 6 planning artifact is this document. Phase-close state is commit `c7ae43a` (`output-hardening: task 4`). Executor cold-starts from this file.
 
 **Reference Documents:**
 - `docs/ALFRED_HANDOVER_4.md` — authoritative Phase 5 handover and post-mortem
@@ -29,6 +26,8 @@
 ### Git History
 
 ```
+c7ae43a  output-hardening: task 4 — add canonical state and git-history support
+54470c3  output-hardening: task 3 — feed real git history into planner
 82c2dad  output-hardening: task 2 — wire canonical scaffold into generation
 b7c56d7  output-hardening: task 1 — add alfred promotion validator
 0e67e8a  updated README
@@ -49,6 +48,15 @@ cbdf91c  phase5: task 2 — critique loop
 - HITL timeout — `pending_approvals` table, `/approvals/request`, `/approve`, `/approvals/expire` endpoints
 - Dogfood #2 — Alfred used to draft its own Phase 6 spec via `scripts/generate_phase6.py`
 
+### Completed Output-Hardening outputs (from `ALFRED_HANDOVER_4_OUTPUT_HARDENING.md`)
+
+- `scripts/validate_alfred_handover.py` — fail-closed promotion validator enforcing all Alfred canonical sections including `### Git History` placement
+- `configs/alfred_handover_template.md` — canonical scaffold injected into every planner prompt
+- `src/alfred/tools/git_log.py` — `read_git_log()` supplying real repository commits to the planner
+- `PlannerInput.git_history_summary` — structured git history field; model forbidden from inventing commits
+- `HandoverDocument.git_history` / `what_exists_today` — optional additive schema fields with render/parse round-trip
+- `tests/test_scripts/test_validate_alfred_handover.py` — promotion regression coverage (original miss reproduced as fixture)
+
 ### Real orchestrator contract (executor must not deviate from this)
 
 ```python
@@ -67,6 +75,7 @@ tests/
   test_agents/
   test_tools/
   test_schemas/
+  test_scripts/
   test_api.py
   test_orchestrator.py
 ```
@@ -251,7 +260,7 @@ lint  →  unit-tests  →  property-tests  →  evals  →  coverage-gate
 **Subtasks:**
 
 - T4.1 — Lint stage: `ruff check .` + `pyright` — must exit 0. (`pyright` is the repo type checker; `mypy` is not used.)
-- T4.2 — Unit-test stage: `pytest tests/ --ignore=tests/property` with JUnit XML output. (The existing suite lives in `tests/test_agents/`, `tests/test_tools/`, `tests/test_schemas/`, `tests/test_api.py`, `tests/test_orchestrator.py`; there is no `tests/unit/` tree.)
+- T4.2 — Unit-test stage: `pytest tests/ --ignore=tests/property` with JUnit XML output. (The existing suite lives in `tests/test_agents/`, `tests/test_tools/`, `tests/test_schemas/`, `tests/test_scripts/`, `tests/test_api.py`, `tests/test_orchestrator.py`; there is no `tests/unit/` tree.)
 - T4.3 — Property-test stage: `pytest tests/property/` — inherits Hypothesis database from cache.
 - T4.4 — Eval stage: `python evals/run_evals.py` — no secrets required.
 - T4.5 — Coverage-gate stage: `pytest --cov=alfred --cov-fail-under=80` followed by `python scripts/check_coverage.py`.
@@ -313,7 +322,7 @@ rg -n "Section 8|Testing Strategy|evals/run_evals.py|Actions" docs/architecture.
 **Expected:**
 - `docs/architecture.md` contains Section 8 covering unit, property, eval, and coverage layers
 - `README.md` includes local verification commands and the GitHub Actions badge/link
-- updated markdown links are checked as part of human review before promotion to `ALFRED_HANDOVER_5.md`
+- updated markdown links are checked as part of human review before close
 
 **Suggested commit message:** `phase6: task 5 — docs update`
 
@@ -385,7 +394,7 @@ rg -n "Section 8|Testing Strategy|evals/run_evals.py|Actions" docs/architecture.
 
 ## POST-MORTEM
 
-> **Instruction to executor:** After implementation, fill in this section before closing the phase. After promotion to `ALFRED_HANDOVER_5.md`, the Phase 7 Planner will cold-start from the canonical copy of this artifact.
+> **Instruction to executor:** After implementation, fill in this section before closing the phase. After promotion to canonical, the Phase 7 Planner will cold-start from this artifact.
 
 **What worked:**
 - *executor to fill*
