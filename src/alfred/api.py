@@ -191,7 +191,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     """Plan sprint: board state + corpus context → draft handover."""
     import datetime
 
-    from alfred.agents.planner import run_planner
+    from alfred.agents.planner import load_canonical_template, run_planner
     from alfred.orchestrator import _run_critique_loop
     from alfred.schemas.handover import HandoverContext, HandoverDocument
 
@@ -200,6 +200,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     velocity = _get_velocity(config)
     chunks = _get_rag_chunks(request.sprint_goal or "sprint planning", config)
     db_path = config.database.path or None
+    canonical_template = load_canonical_template(config.handover.template_path)
 
     from alfred.tools.llm import resolve_model
 
@@ -210,6 +211,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
             velocity_history=velocity,
             prior_handover_summaries=chunks,
             sprint_goal=request.sprint_goal,
+            canonical_template=canonical_template,
         ),
         provider=plan_provider,
         model=plan_model,

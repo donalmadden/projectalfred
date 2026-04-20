@@ -12,10 +12,37 @@ to llm.complete — this agent does not re-implement that logic.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from alfred.schemas.agent import PlannerInput, PlannerOutput
 from alfred.tools import llm
+
+# Repo root is resolved from this file's location so the template path in
+# config (relative to the repo root) works from any CWD.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def load_canonical_template(template_path: str) -> Optional[str]:
+    """Read the Alfred canonical scaffold markdown from ``template_path``.
+
+    Returns ``None`` if the path is empty or the file cannot be read. The
+    path is resolved against the current working directory first and then
+    against the repo root, so CLI scripts, the FastAPI server, and tests
+    all see consistent behaviour.
+    """
+    if not template_path:
+        return None
+    candidates = [Path(template_path)]
+    if not Path(template_path).is_absolute():
+        candidates.append(_REPO_ROOT / template_path)
+    for candidate in candidates:
+        if candidate.is_file():
+            try:
+                return candidate.read_text(encoding="utf-8")
+            except OSError:
+                continue
+    return None
 
 
 def _build_prompt(input: PlannerInput) -> str:
@@ -81,6 +108,27 @@ def _build_prompt(input: PlannerInput) -> str:
             "The previous draft was reviewed and found the following issues to address:\n"
             f"{issues_text}\n"
             "Please revise the draft to address these issues."
+        )
+
+    if input.canonical_template:
+        parts.append(
+            "CANONICAL OUTPUT SCAFFOLD (Alfred house style — NON-NEGOTIABLE):\n"
+            "Your draft MUST preserve every `##` and `###` heading from the scaffold\n"
+            "below, verbatim and in the same order. Content under each heading is\n"
+            "yours to write; the headings themselves are contracts checked by the\n"
+            "promotion validator. The following sections are REQUIRED:\n"
+            "  - `## CONTEXT — READ THIS FIRST`\n"
+            "  - `## WHAT EXISTS TODAY` (must contain a `### Git History` subsection)\n"
+            "  - `## HARD RULES`\n"
+            "  - `## TASK OVERVIEW`\n"
+            "  - `## WHAT NOT TO DO`\n"
+            "  - `## POST-MORTEM`\n"
+            "Do NOT fabricate git history. If no git history is supplied elsewhere in\n"
+            "this prompt, leave `### Git History` with a `TBD — git log to be injected`\n"
+            "marker so the promotion validator and human reviewer can flag it.\n\n"
+            "---SCAFFOLD BEGIN---\n"
+            f"{input.canonical_template}\n"
+            "---SCAFFOLD END---"
         )
 
     parts.append(

@@ -90,6 +90,10 @@ class PlannerInput(BaseModel):
     current_handover_context: Optional[str] = None
     sprint_goal: Optional[str] = None
     prior_critique: Optional[list["CritiqueEntry"]] = None
+    # When supplied, the planner prompt injects this scaffold verbatim and
+    # instructs the model to preserve every `##` / `###` heading. Empty for
+    # generic/legacy generation paths; set for Alfred canonical generation.
+    canonical_template: Optional[str] = None
 
 
 class SprintPlan(BaseModel):

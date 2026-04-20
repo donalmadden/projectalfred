@@ -107,6 +107,52 @@ def test_generate_returns_draft_content(client: TestClient) -> None:
     assert resp.json()["task_decomposition"] == ["Task A", "Task B"]
 
 
+def test_generate_injects_canonical_scaffold_into_planner_prompt(tmp_path: Path) -> None:
+    """The /generate path must read handover.template_path and pass the
+    scaffold content into the planner prompt, not silently ignore it.
+    """
+    scaffold = (
+        "## CONTEXT — READ THIS FIRST\n\n"
+        "## WHAT EXISTS TODAY\n\n"
+        "### Git History\n\n"
+        "## HARD RULES\n\n"
+        "## TASK OVERVIEW\n\n"
+        "## WHAT NOT TO DO\n\n"
+        "## POST-MORTEM\n"
+        "ALFRED_SCAFFOLD_MARKER_XYZ\n"
+    )
+    scaffold_path = tmp_path / "alfred_scaffold.md"
+    scaffold_path.write_text(scaffold, encoding="utf-8")
+
+    cfg = AlfredConfig()
+    cfg.llm.provider = "fake"
+    cfg.llm.model = "m"
+    cfg.database.path = ""
+    cfg.github.org = ""
+    cfg.rag.index_path = ""
+    cfg.handover.template_path = str(scaffold_path)
+    # Critique loop re-invokes the planner; disable it here so the captured
+    # prompt list always contains the initial generation call deterministically.
+    cfg.agents.planner.max_critique_iterations = 0
+    set_config(cfg)
+
+    captured: list[str] = []
+
+    def fake(prompt: str, output_schema: Any, model: str) -> tuple[dict[str, Any], int]:
+        captured.append(prompt)
+        return _PLANNER_RESPONSE, 0
+
+    llm._PROVIDERS["fake"] = fake
+
+    client = TestClient(app)
+    resp = client.post("/generate", json={"sprint_goal": "Phase 6"})
+
+    assert resp.status_code == 200
+    assert captured, "planner was not invoked"
+    assert "ALFRED_SCAFFOLD_MARKER_XYZ" in captured[0]
+    assert "SCAFFOLD BEGIN" in captured[0]
+
+
 # ---------------------------------------------------------------------------
 # POST /evaluate
 # ---------------------------------------------------------------------------

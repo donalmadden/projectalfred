@@ -206,3 +206,98 @@ def test_run_planner_empty_board() -> None:
     inp = PlannerInput(board_state=BoardState())
     out = planner.run_planner(inp, provider="fake", model="m")
     assert out.draft_handover_markdown  # still produces output
+
+
+# ---------------------------------------------------------------------------
+# Canonical scaffold injection (output-hardening task 2)
+# ---------------------------------------------------------------------------
+
+_SCAFFOLD_FIXTURE = (
+    "# Alfred's Handover Document #<N> — <Title>\n\n"
+    "## CONTEXT — READ THIS FIRST\n\n"
+    "## WHAT EXISTS TODAY\n\n"
+    "### Git History\n\n"
+    "## HARD RULES\n\n"
+    "## TASK OVERVIEW\n\n"
+    "## WHAT NOT TO DO\n\n"
+    "## POST-MORTEM\n"
+)
+
+
+def _capture_prompt() -> list[str]:
+    captured: list[str] = []
+
+    def fake(prompt: str, output_schema: Any, model: str) -> tuple[dict[str, Any], int]:
+        captured.append(prompt)
+        return _VALID_OUTPUT, 0
+
+    llm._PROVIDERS["fake"] = fake
+    return captured
+
+
+def test_prompt_injects_scaffold_when_canonical_template_provided() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.canonical_template = _SCAFFOLD_FIXTURE
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "SCAFFOLD BEGIN" in prompt
+    assert "SCAFFOLD END" in prompt
+    assert "### Git History" in prompt
+    assert "## WHAT EXISTS TODAY" in prompt
+
+
+def test_prompt_requires_house_style_headings_when_scaffold_provided() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.canonical_template = _SCAFFOLD_FIXTURE
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    # Contract must be explicit — the scaffold alone is not enough.
+    assert "NON-NEGOTIABLE" in prompt
+    assert "verbatim" in prompt
+    assert "## CONTEXT — READ THIS FIRST" in prompt
+    assert "## POST-MORTEM" in prompt
+    # Fabrication guard (Hard Rule 2 of the output-hardening handover).
+    assert "fabricate" in prompt.lower()
+
+
+def test_prompt_omits_scaffold_block_when_template_not_provided() -> None:
+    captured = _capture_prompt()
+    planner.run_planner(_minimal_input(), provider="fake", model="m")
+    prompt = captured[0]
+    assert "SCAFFOLD BEGIN" not in prompt
+    assert "NON-NEGOTIABLE" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# load_canonical_template helper
+# ---------------------------------------------------------------------------
+
+
+def test_load_canonical_template_reads_file(tmp_path) -> None:
+    path = tmp_path / "scaffold.md"
+    path.write_text("## WHAT EXISTS TODAY\n\n### Git History\n", encoding="utf-8")
+    content = planner.load_canonical_template(str(path))
+    assert content is not None
+    assert "### Git History" in content
+
+
+def test_load_canonical_template_returns_none_for_empty_path() -> None:
+    assert planner.load_canonical_template("") is None
+
+
+def test_load_canonical_template_returns_none_for_missing_file(tmp_path) -> None:
+    missing = tmp_path / "does_not_exist.md"
+    assert planner.load_canonical_template(str(missing)) is None
+
+
+def test_load_canonical_template_resolves_repo_relative_default() -> None:
+    # The default config ships configs/alfred_handover_template.md in the repo.
+    # The helper must find it by relative path regardless of CWD.
+    content = planner.load_canonical_template("configs/alfred_handover_template.md")
+    assert content is not None
+    assert "## CONTEXT — READ THIS FIRST" in content
+    assert "### Git History" in content

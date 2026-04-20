@@ -330,7 +330,7 @@ def _run_critique_loop(
     """
     import datetime
 
-    from alfred.agents.planner import run_planner
+    from alfred.agents.planner import load_canonical_template, run_planner
     from alfred.agents.quality_judge import run_quality_judge
     from alfred.tools.llm import resolve_model
 
@@ -340,6 +340,10 @@ def _run_critique_loop(
 
     if max_iters <= 0:
         return draft_markdown
+
+    # Revisions must preserve Alfred house style, not drift back to a generic
+    # shape. Load the scaffold once and reuse it across iterations.
+    canonical_template = load_canonical_template(config.handover.template_path)
 
     current_draft = draft_markdown
     best_draft = draft_markdown
@@ -391,6 +395,7 @@ def _run_critique_loop(
                     velocity_history=velocity,
                     prior_handover_summaries=chunks,
                     prior_critique=handover.critique_history,
+                    canonical_template=canonical_template,
                 ),
                 provider=plan_provider,
                 model=plan_model,

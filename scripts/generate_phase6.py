@@ -33,7 +33,7 @@ def main() -> None:
 
     from alfred.schemas.agent import BoardState, PlannerInput
     from alfred.schemas.handover import HandoverContext, HandoverDocument
-    from alfred.agents.planner import run_planner
+    from alfred.agents.planner import load_canonical_template, run_planner
     from alfred.orchestrator import _run_critique_loop
     from alfred.tools.llm import resolve_model
     from alfred.tools.persistence import get_velocity_history
@@ -59,6 +59,15 @@ def main() -> None:
     if config.database.path:
         velocity = get_velocity_history(config.database.path, sprint_count=10)
 
+    canonical_template = load_canonical_template(config.handover.template_path)
+    if canonical_template:
+        print(f"Loaded Alfred canonical scaffold from {config.handover.template_path}")
+    else:
+        print(
+            f"WARNING: no canonical scaffold loaded from {config.handover.template_path!r}; "
+            "generated draft will not be promotion-safe without manual fixup."
+        )
+
     plan_provider, plan_model = resolve_model("plan", config)
     print(f"Calling planner ({plan_provider}/{plan_model})...")
     planner_out = run_planner(
@@ -67,6 +76,7 @@ def main() -> None:
             velocity_history=velocity,
             sprint_goal=SPRINT_GOAL,
             prior_handover_summaries=chunks,
+            canonical_template=canonical_template,
         ),
         provider=plan_provider,
         model=plan_model,

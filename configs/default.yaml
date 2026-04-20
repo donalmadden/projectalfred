@@ -34,7 +34,11 @@ hitl:
 
 handover:
   schema_version: "1.0"
-  template_path: "configs/handover_template.md"
+  # Alfred canonical scaffold. Loaded by the planner prompt and reused by the
+  # critique loop so every generated draft preserves the Alfred house-style
+  # headings. The legacy generic template at configs/handover_template.md is
+  # reference documentation only — it is not config-wired.
+  template_path: "configs/alfred_handover_template.md"
   corpus_glob: "**/*_HANDOVER_*.md"
 
 agents:

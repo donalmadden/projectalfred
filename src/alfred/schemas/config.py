@@ -146,7 +146,10 @@ class HandoverConfig(BaseModel):
     """Settings governing handover document handling."""
 
     schema_version: str = "1.0"
-    template_path: str = "configs/handover_template.md"
+    # Path to the Alfred canonical scaffold. Loaded by the planner prompt and
+    # reused by the critique loop so generated drafts preserve Alfred house
+    # style by construction rather than by prompt wording alone.
+    template_path: str = "configs/alfred_handover_template.md"
     corpus_glob: str = "**/*_HANDOVER_*.md"
 
 
