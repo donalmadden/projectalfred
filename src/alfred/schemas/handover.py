@@ -168,6 +168,12 @@ class HandoverDocument(BaseModel):
     tasks: list[HandoverTask] = Field(default_factory=list)
     anti_patterns: list[str] = Field(default_factory=list)
 
+    # Alfred canonical current-state fields (optional, additive).
+    # Permissive parsing means absence of these fields never breaks legacy or
+    # BOB-style documents — they simply remain at their empty defaults.
+    what_exists_today: list[str] = Field(default_factory=list)
+    git_history: list[str] = Field(default_factory=list)
+
     # Populated during critique loop (Phase 5)
     critique_history: list[CritiqueEntry] = Field(default_factory=list)
 
@@ -228,6 +234,21 @@ class HandoverDocument(BaseModel):
             parts.append("## IMPORTANT\n")
             for notice in self.context.important_notices:
                 parts.append(notice)
+                parts.append("")
+
+        # WHAT EXISTS TODAY (Alfred canonical section)
+        if self.git_history or self.what_exists_today:
+            parts.append("---\n")
+            parts.append("## WHAT EXISTS TODAY\n")
+            if self.git_history:
+                parts.append("### Git History\n")
+                parts.append("```")
+                parts.extend(self.git_history)
+                parts.append("```")
+                parts.append("")
+            for item in self.what_exists_today:
+                parts.append(f"- {item}")
+            if self.what_exists_today:
                 parts.append("")
 
         # Hard rules
@@ -368,6 +389,7 @@ class HandoverDocument(BaseModel):
         task_overview = _parse_task_overview(sections)
         tasks = _parse_tasks(sections)
         post_mortem = _parse_post_mortem_section(sections)
+        what_exists_today, git_history = _parse_what_exists_today(sections)
 
         return cls(
             id=doc_id,
@@ -385,6 +407,8 @@ class HandoverDocument(BaseModel):
             tasks=tasks,
             anti_patterns=anti_patterns,
             post_mortem=post_mortem,
+            what_exists_today=what_exists_today,
+            git_history=git_history,
         )
 
 
@@ -798,6 +822,46 @@ def _extract_checkpoints_from_body(body: str) -> list["Checkpoint"]:
         )
 
     return checkpoints
+
+
+def _parse_what_exists_today(sections: dict[str, str]) -> tuple[list[str], list[str]]:
+    """Parse ## WHAT EXISTS TODAY into (what_exists_today bullets, git_history lines).
+
+    Permissive: if the section is absent or malformed both lists are empty.
+    The ### Git History subsection is extracted first; remaining bullet lines
+    become what_exists_today. Non-Alfred documents without this section are
+    unaffected.
+    """
+    body = sections.get("what exists today", "")
+    if not body:
+        return [], []
+
+    git_history: list[str] = []
+    what_exists_today: list[str] = []
+
+    # Extract ### Git History code block
+    git_block_m = re.search(
+        r"###\s+Git History\s*\n+```[^\n]*\n(.*?)```",
+        body,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if git_block_m:
+        git_history = [
+            line for line in git_block_m.group(1).splitlines() if line.strip()
+        ]
+        # Remove the git history subsection from body before parsing bullets
+        body = body[: git_block_m.start()] + body[git_block_m.end() :]
+
+    # Remaining bullet lines (skip ### sub-headers and blank lines)
+    for line in body.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        m = re.match(r"^[-*]\s+(.+)", stripped)
+        if m:
+            what_exists_today.append(m.group(1).strip())
+
+    return what_exists_today, git_history
 
 
 def _parse_post_mortem_section(sections: dict[str, str]) -> Optional[PostMortem]:
