@@ -153,6 +153,45 @@ def test_generate_injects_canonical_scaffold_into_planner_prompt(tmp_path: Path)
     assert "SCAFFOLD BEGIN" in captured[0]
 
 
+def test_generate_injects_git_history_into_planner_prompt() -> None:
+    """The /generate path must call read_git_log() and pass its output into the
+    planner prompt so ### Git History is grounded in real repository state.
+    """
+    from unittest.mock import patch
+
+    cfg = AlfredConfig()
+    cfg.llm.provider = "fake"
+    cfg.llm.model = "m"
+    cfg.database.path = ""
+    cfg.github.org = ""
+    cfg.rag.index_path = ""
+    cfg.handover.template_path = ""
+    cfg.agents.planner.max_critique_iterations = 0
+    set_config(cfg)
+
+    captured: list[str] = []
+
+    def fake(prompt: str, output_schema: Any, model: str) -> tuple[dict[str, Any], int]:
+        captured.append(prompt)
+        return _PLANNER_RESPONSE, 0
+
+    llm._PROVIDERS["fake"] = fake
+
+    fake_history = [
+        "abc1234  output-hardening: task 3 — feed real git history",
+        "def5678  output-hardening: task 2 — wire canonical scaffold",
+    ]
+
+    with patch("alfred.api.read_git_log", return_value=fake_history):
+        client = TestClient(app)
+        resp = client.post("/generate", json={"sprint_goal": "Phase 6"})
+
+    assert resp.status_code == 200
+    assert captured, "planner was not called"
+    assert "abc1234" in captured[0]
+    assert "GIT HISTORY" in captured[0]
+
+
 # ---------------------------------------------------------------------------
 # POST /evaluate
 # ---------------------------------------------------------------------------

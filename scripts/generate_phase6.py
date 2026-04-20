@@ -35,6 +35,7 @@ def main() -> None:
     from alfred.schemas.handover import HandoverContext, HandoverDocument
     from alfred.agents.planner import load_canonical_template, run_planner
     from alfred.orchestrator import _run_critique_loop
+    from alfred.tools.git_log import read_git_log
     from alfred.tools.llm import resolve_model
     from alfred.tools.persistence import get_velocity_history
     from alfred.tools.rag import retrieve
@@ -68,6 +69,12 @@ def main() -> None:
             "generated draft will not be promotion-safe without manual fixup."
         )
 
+    git_history = read_git_log(max_commits=12)
+    if git_history:
+        print(f"  {len(git_history)} git commits loaded for ### Git History")
+    else:
+        print("WARNING: no git history available; ### Git History will be a TBD marker")
+
     plan_provider, plan_model = resolve_model("plan", config)
     print(f"Calling planner ({plan_provider}/{plan_model})...")
     planner_out = run_planner(
@@ -77,6 +84,7 @@ def main() -> None:
             sprint_goal=SPRINT_GOAL,
             prior_handover_summaries=chunks,
             canonical_template=canonical_template,
+            git_history_summary=git_history,
         ),
         provider=plan_provider,
         model=plan_model,

@@ -29,6 +29,7 @@ from alfred.schemas.agent import (
     VelocityRecord,
 )
 from alfred.schemas.config import AlfredConfig
+from alfred.tools.git_log import read_git_log
 
 app = FastAPI(title="Alfred")
 
@@ -201,6 +202,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     chunks = _get_rag_chunks(request.sprint_goal or "sprint planning", config)
     db_path = config.database.path or None
     canonical_template = load_canonical_template(config.handover.template_path)
+    git_history = read_git_log()
 
     from alfred.tools.llm import resolve_model
 
@@ -212,6 +214,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
             prior_handover_summaries=chunks,
             sprint_goal=request.sprint_goal,
             canonical_template=canonical_template,
+            git_history_summary=git_history,
         ),
         provider=plan_provider,
         model=plan_model,

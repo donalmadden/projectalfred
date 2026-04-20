@@ -110,7 +110,28 @@ def _build_prompt(input: PlannerInput) -> str:
             "Please revise the draft to address these issues."
         )
 
+    if input.git_history_summary:
+        history_block = "\n".join(input.git_history_summary)
+        parts.append(
+            "GIT HISTORY (real repository state — use verbatim under ### Git History):\n"
+            "The commits below are the authoritative recent history of this repository.\n"
+            "You MUST render them verbatim inside the `### Git History` section of your\n"
+            "draft. Do NOT add, remove, or alter any commit hash or message. Do NOT\n"
+            "invent commits that are not listed here.\n\n"
+            "```\n"
+            f"{history_block}\n"
+            "```"
+        )
+
     if input.canonical_template:
+        git_history_instruction = (
+            "  - `## WHAT EXISTS TODAY` (must contain a `### Git History` subsection\n"
+            "    populated with the GIT HISTORY block supplied above)"
+            if input.git_history_summary
+            else
+            "  - `## WHAT EXISTS TODAY` (must contain a `### Git History` subsection;\n"
+            "    do NOT fabricate history — leave a `TBD — git log to be injected` marker)"
+        )
         parts.append(
             "CANONICAL OUTPUT SCAFFOLD (Alfred house style — NON-NEGOTIABLE):\n"
             "Your draft MUST preserve every `##` and `###` heading from the scaffold\n"
@@ -118,14 +139,11 @@ def _build_prompt(input: PlannerInput) -> str:
             "yours to write; the headings themselves are contracts checked by the\n"
             "promotion validator. The following sections are REQUIRED:\n"
             "  - `## CONTEXT — READ THIS FIRST`\n"
-            "  - `## WHAT EXISTS TODAY` (must contain a `### Git History` subsection)\n"
+            f"{git_history_instruction}\n"
             "  - `## HARD RULES`\n"
             "  - `## TASK OVERVIEW`\n"
             "  - `## WHAT NOT TO DO`\n"
-            "  - `## POST-MORTEM`\n"
-            "Do NOT fabricate git history. If no git history is supplied elsewhere in\n"
-            "this prompt, leave `### Git History` with a `TBD — git log to be injected`\n"
-            "marker so the promotion validator and human reviewer can flag it.\n\n"
+            "  - `## POST-MORTEM`\n\n"
             "---SCAFFOLD BEGIN---\n"
             f"{input.canonical_template}\n"
             "---SCAFFOLD END---"

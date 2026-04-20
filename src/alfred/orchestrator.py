@@ -332,6 +332,7 @@ def _run_critique_loop(
 
     from alfred.agents.planner import load_canonical_template, run_planner
     from alfred.agents.quality_judge import run_quality_judge
+    from alfred.tools.git_log import read_git_log
     from alfred.tools.llm import resolve_model
 
     planner_cfg = config.agents.planner
@@ -342,8 +343,9 @@ def _run_critique_loop(
         return draft_markdown
 
     # Revisions must preserve Alfred house style, not drift back to a generic
-    # shape. Load the scaffold once and reuse it across iterations.
+    # shape. Load the scaffold and git history once; reuse across iterations.
     canonical_template = load_canonical_template(config.handover.template_path)
+    git_history = read_git_log()
 
     current_draft = draft_markdown
     best_draft = draft_markdown
@@ -396,6 +398,7 @@ def _run_critique_loop(
                     prior_handover_summaries=chunks,
                     prior_critique=handover.critique_history,
                     canonical_template=canonical_template,
+                    git_history_summary=git_history,
                 ),
                 provider=plan_provider,
                 model=plan_model,

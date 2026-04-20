@@ -301,3 +301,78 @@ def test_load_canonical_template_resolves_repo_relative_default() -> None:
     assert content is not None
     assert "## CONTEXT — READ THIS FIRST" in content
     assert "### Git History" in content
+
+
+# ---------------------------------------------------------------------------
+# Structured git history input (output-hardening task 3)
+# ---------------------------------------------------------------------------
+
+_GIT_HISTORY = [
+    "abc1234  output-hardening: task 2 — wire canonical scaffold",
+    "def5678  output-hardening: task 1 — add alfred promotion validator",
+    "ghi9012  phase5: task 6 — dogfood #2",
+]
+
+
+def test_prompt_includes_supplied_git_history() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.git_history_summary = _GIT_HISTORY
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "abc1234" in prompt
+    assert "output-hardening: task 2" in prompt
+    assert "phase5: task 6" in prompt
+
+
+def test_prompt_forbids_inventing_git_history_when_supplied() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.git_history_summary = _GIT_HISTORY
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "Do NOT" in prompt or "do not" in prompt.lower()
+    assert "invent" in prompt.lower() or "fabricat" in prompt.lower()
+
+
+def test_prompt_labels_history_block() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.git_history_summary = _GIT_HISTORY
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "GIT HISTORY" in prompt
+
+
+def test_prompt_omits_git_history_block_when_not_supplied() -> None:
+    captured = _capture_prompt()
+    planner.run_planner(_minimal_input(), provider="fake", model="m")
+    prompt = captured[0]
+    assert "GIT HISTORY" not in prompt
+
+
+def test_scaffold_instruction_references_git_history_when_both_supplied() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.git_history_summary = _GIT_HISTORY
+    inp.canonical_template = _SCAFFOLD_FIXTURE
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    # When git history is supplied alongside the scaffold, the prompt should
+    # reference the GIT HISTORY block instead of a TBD marker.
+    assert "GIT HISTORY block supplied above" in prompt
+    assert "TBD" not in prompt
+
+
+def test_scaffold_instruction_uses_tbd_marker_when_no_git_history() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.canonical_template = _SCAFFOLD_FIXTURE
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "TBD" in prompt

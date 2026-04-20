@@ -94,6 +94,10 @@ class PlannerInput(BaseModel):
     # instructs the model to preserve every `##` / `###` heading. Empty for
     # generic/legacy generation paths; set for Alfred canonical generation.
     canonical_template: Optional[str] = None
+    # Real git commits supplied by the caller. When present the planner renders
+    # them verbatim under ### Git History and is forbidden from inventing extras.
+    # Optional so non-repo and test contexts still work.
+    git_history_summary: list[str] = Field(default_factory=list)
 
 
 class SprintPlan(BaseModel):
