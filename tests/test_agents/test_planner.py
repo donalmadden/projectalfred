@@ -375,3 +375,91 @@ def test_scaffold_instruction_uses_tbd_marker_when_no_git_history() -> None:
 
     prompt = captured[0]
     assert "TBD" in prompt
+
+
+# ---------------------------------------------------------------------------
+# Repository facts injection (output-hardening R1–R11)
+# ---------------------------------------------------------------------------
+
+_REPO_FACTS = [
+    "Agent modules in src/alfred/agents/: compiler, planner, quality_judge, retro_analyst, story_generator",
+    "Tool modules in src/alfred/tools/: git_log, github_api, llm, persistence, rag, repo_facts",
+    "Top-level names under src/alfred/: agents, api, orchestrator, schemas, tools",
+    "FastAPI module path: src/alfred/api.py",
+    "FastAPI endpoints (9): POST /generate, POST /evaluate, POST /approvals/request",
+    "pyproject.toml: exists=True, [project]=True, [project.scripts]=True, cli_entry=alfred.cli:main",
+    "Type checker: pyright (mypy IS NOT in use)",
+]
+
+
+def test_prompt_injects_repo_facts_when_supplied() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.repo_facts_summary = _REPO_FACTS
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "REPOSITORY FACTS" in prompt
+    for line in _REPO_FACTS:
+        assert line in prompt
+
+
+def test_prompt_forbids_contradicting_repo_facts() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.repo_facts_summary = _REPO_FACTS
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    # The facts block must carry explicit prohibitions against the common
+    # hallucinations documented in OUTPUT_HARDENING R1–R11.
+    assert "DO NOT CONTRADICT" in prompt
+    assert "mypy" in prompt  # must reference the pyright-vs-mypy guardrail
+    assert "api" in prompt.lower()  # must reference the FastAPI-path guardrail
+
+
+def test_prompt_omits_repo_facts_block_when_not_supplied() -> None:
+    captured = _capture_prompt()
+    planner.run_planner(_minimal_input(), provider="fake", model="m")
+    prompt = captured[0]
+    assert "REPOSITORY FACTS" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# Generation metadata injection (output-hardening task 4)
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_injects_generation_metadata_when_supplied() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.generation_date = "2026-04-20"
+    inp.expected_handover_id = "ALFRED_HANDOVER_6"
+    inp.expected_previous_handover = "ALFRED_HANDOVER_5"
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "GENERATION METADATA" in prompt
+    assert "2026-04-20" in prompt
+    assert "ALFRED_HANDOVER_6" in prompt
+    assert "ALFRED_HANDOVER_5" in prompt
+
+
+def test_prompt_metadata_instructs_verbatim_use() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.generation_date = "2026-04-20"
+    inp.expected_handover_id = "ALFRED_HANDOVER_6"
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "verbatim" in prompt.lower()
+    # The planner must be told NOT to infer these values from RAG prose.
+    assert "RAG context" in prompt or "RAG" in prompt
+
+
+def test_prompt_omits_metadata_block_when_fields_empty() -> None:
+    captured = _capture_prompt()
+    planner.run_planner(_minimal_input(), provider="fake", model="m")
+    prompt = captured[0]
+    assert "GENERATION METADATA" not in prompt

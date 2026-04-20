@@ -325,6 +325,11 @@ def _run_critique_loop(
     handover: HandoverDocument,
     config: AlfredConfig,
     db_path: Optional[str],
+    *,
+    repo_facts_summary: Optional[list[str]] = None,
+    generation_date: Optional[str] = None,
+    expected_handover_id: Optional[str] = None,
+    expected_previous_handover: Optional[str] = None,
 ) -> str:
     """Run planner–judge iterations. Returns the best draft markdown.
 
@@ -403,6 +408,10 @@ def _run_critique_loop(
                     prior_critique=handover.critique_history,
                     canonical_template=canonical_template,
                     git_history_summary=git_history,
+                    repo_facts_summary=repo_facts_summary or [],
+                    generation_date=generation_date,
+                    expected_handover_id=expected_handover_id,
+                    expected_previous_handover=expected_previous_handover,
                 ),
                 provider=plan_provider,
                 model=plan_model,

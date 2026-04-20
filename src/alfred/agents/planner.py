@@ -60,6 +60,45 @@ def _build_prompt(input: PlannerInput) -> str:
         "5. Statelessness by design — each session cold-starts from the document.\n"
     )
 
+    if input.repo_facts_summary:
+        facts_block = "\n".join(f"  - {line}" for line in input.repo_facts_summary)
+        parts.append(
+            "REPOSITORY FACTS (authoritative current state — DO NOT CONTRADICT):\n"
+            "The bullets below are derived by direct inspection of the workspace.\n"
+            "They are the ground truth for any `## WHAT EXISTS TODAY` claim. Rules:\n"
+            "  - Present-tense claims about modules, agents, endpoints, tooling, or\n"
+            "    packaging MUST match these facts verbatim.\n"
+            "  - If a file, package, or module is NOT listed below, do NOT claim it\n"
+            "    exists today. Put it in a future-tense section instead (e.g.\n"
+            "    `## WHAT THIS PHASE PRODUCES` or a TASK description).\n"
+            "  - Do NOT rename agents, tool modules, or packages. The names in the\n"
+            "    facts block are the real names.\n"
+            "  - Do NOT claim `mypy` is in use unless the facts block says so. The\n"
+            "    repository uses `pyright`.\n"
+            "  - Do NOT claim `pyproject.toml` lacks packaging metadata when the facts\n"
+            "    block shows `[project]=True`. Distinguish existing-but-incomplete\n"
+            "    from missing.\n"
+            "  - Do NOT claim the FastAPI app lives anywhere other than the\n"
+            "    `FastAPI module path` given below.\n\n"
+            f"{facts_block}"
+        )
+
+    identity_lines: list[str] = []
+    if input.generation_date:
+        identity_lines.append(f"  - Today's date: {input.generation_date}")
+    if input.expected_handover_id:
+        identity_lines.append(f"  - Expected draft id (use verbatim): {input.expected_handover_id}")
+    if input.expected_previous_handover:
+        identity_lines.append(
+            f"  - Expected previous_handover (use verbatim): {input.expected_previous_handover}"
+        )
+    if identity_lines:
+        parts.append(
+            "GENERATION METADATA (use verbatim in the `## CONTEXT — READ THIS FIRST`\n"
+            "metadata block — do NOT infer these values from RAG context):\n"
+            + "\n".join(identity_lines)
+        )
+
     board = input.board_state
     sprint_label = f"Sprint {board.sprint_number}" if board.sprint_number else "current sprint"
     stories_block = ""

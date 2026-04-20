@@ -98,6 +98,16 @@ class PlannerInput(BaseModel):
     # them verbatim under ### Git History and is forbidden from inventing extras.
     # Optional so non-repo and test contexts still work.
     git_history_summary: list[str] = Field(default_factory=list)
+    # Authoritative current-state facts about the repo (agent roster, tool
+    # modules, API surface, packaging state, type checker). Injected verbatim
+    # into the prompt and treated as non-negotiable truth by the planner.
+    repo_facts_summary: list[str] = Field(default_factory=list)
+    # Generation metadata: today's date and the expected handover identifiers.
+    # The planner must use these verbatim in the draft metadata block instead
+    # of inferring values from RAG context. All optional so legacy paths work.
+    generation_date: Optional[str] = None
+    expected_handover_id: Optional[str] = None
+    expected_previous_handover: Optional[str] = None
 
 
 class SprintPlan(BaseModel):
