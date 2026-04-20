@@ -1,0 +1,7 @@
+{
+  "global": 80,
+  "modules": {
+    "src/alfred/orchestrator.py": 79,
+    "src/alfred/agents/planner.py": 80
+  }
+}
