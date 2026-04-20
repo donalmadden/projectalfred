@@ -1,6 +1,14 @@
-"""Generate the Phase 7 handover spec using Alfred's own planner pipeline."""
+"""Generate the Phase 7 handover spec using Alfred's own planner pipeline.
+
+Identity and temporal metadata are injected explicitly via module-level
+constants so the planner does not have to recall the handover number, the
+previous handover id, or the current date from RAG context. Repo facts are
+computed on every run from the live workspace and passed into the planner
+so ``## WHAT EXISTS TODAY`` claims are grounded in code, not prose.
+"""
 from __future__ import annotations
 
+import datetime
 import os
 import sys
 from pathlib import Path
@@ -12,12 +20,28 @@ import yaml
 from alfred.schemas.config import AlfredConfig
 from alfred.tools.rag import index_corpus
 
+# ---------------------------------------------------------------------------
+# Identity and temporal metadata — single source of truth for this generator.
+# Changing the phase only requires editing these constants; everything else
+# derives from them (OUTPUT_PATH, PlannerInput metadata, HandoverDocument id).
+# ---------------------------------------------------------------------------
+
+EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_6"
+EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_5"
+DISPLAY_TITLE = "Phase 7 Draft"
+DRAFT_FILENAME = f"{EXPECTED_HANDOVER_ID}_DRAFT.md"
+OUTPUT_PATH = Path(__file__).parent.parent / "docs" / DRAFT_FILENAME
+CONFIG_PATH = Path(__file__).parent.parent / "configs" / "default.yaml"
+
 SPRINT_GOAL = (
     "Phase 7: Developer experience and deployment — packaging, Docker, CLI polish, "
     "operational hardening, and runtime deployment for the Alfred agent coordination system."
 )
-CONFIG_PATH = Path(__file__).parent.parent / "configs" / "default.yaml"
-OUTPUT_PATH = Path(__file__).parent.parent / "docs" / "ALFRED_HANDOVER_6_DRAFT.md"
+
+
+def compute_generation_date() -> str:
+    """Return today's ISO date. Isolated so tests can patch it."""
+    return datetime.date.today().isoformat()
 
 
 def main() -> None:
@@ -32,8 +56,6 @@ def main() -> None:
     )
     print(f"  {n} chunks indexed from {config.rag.corpus_path!r}")
 
-    import datetime
-
     from alfred.agents.planner import load_canonical_template, run_planner
     from alfred.orchestrator import _run_critique_loop
     from alfred.schemas.agent import BoardState, PlannerInput
@@ -42,6 +64,7 @@ def main() -> None:
     from alfred.tools.llm import resolve_model
     from alfred.tools.persistence import get_velocity_history
     from alfred.tools.rag import retrieve
+    from alfred.tools.repo_facts import build_repo_facts_summary
 
     chunks = retrieve(SPRINT_GOAL, config.rag.index_path, top_k=5)
     print(f"  {len(chunks)} RAG chunks retrieved")
@@ -77,6 +100,15 @@ def main() -> None:
     else:
         print("WARNING: no git history available; ### Git History will be a TBD marker")
 
+    repo_facts = build_repo_facts_summary()
+    print(f"  {len(repo_facts)} repo-truth facts computed from live workspace")
+
+    generation_date = compute_generation_date()
+    print(
+        f"Identity metadata: id={EXPECTED_HANDOVER_ID}, "
+        f"previous={EXPECTED_PREVIOUS_HANDOVER}, date={generation_date}"
+    )
+
     plan_provider, plan_model = resolve_model("plan", config)
     print(f"Calling planner ({plan_provider}/{plan_model})...")
     planner_out = run_planner(
@@ -87,6 +119,10 @@ def main() -> None:
             prior_handover_summaries=chunks,
             canonical_template=canonical_template,
             git_history_summary=git_history,
+            repo_facts_summary=repo_facts,
+            generation_date=generation_date,
+            expected_handover_id=EXPECTED_HANDOVER_ID,
+            expected_previous_handover=EXPECTED_PREVIOUS_HANDOVER,
         ),
         provider=plan_provider,
         model=plan_model,
@@ -94,9 +130,9 @@ def main() -> None:
     )
 
     temp_handover = HandoverDocument(
-        id="ALFRED_HANDOVER_6_DRAFT",
-        title="Phase 7 Draft",
-        date=datetime.date.today(),
+        id=f"{EXPECTED_HANDOVER_ID}_DRAFT",
+        title=DISPLAY_TITLE,
+        date=datetime.date.fromisoformat(generation_date),
         author="alfred",
         context=HandoverContext(narrative=""),
     )
@@ -106,6 +142,10 @@ def main() -> None:
         temp_handover,
         config,
         config.database.path,
+        repo_facts_summary=repo_facts,
+        generation_date=generation_date,
+        expected_handover_id=EXPECTED_HANDOVER_ID,
+        expected_previous_handover=EXPECTED_PREVIOUS_HANDOVER,
     )
 
     OUTPUT_PATH.write_text(best_draft)
