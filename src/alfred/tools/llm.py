@@ -55,7 +55,7 @@ def _complete_anthropic(
     tool_name = "emit_" + output_schema.__name__.lower()
     message = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=8192,
         tools=[
             {
                 "name": tool_name,
