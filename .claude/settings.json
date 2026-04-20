@@ -9,7 +9,8 @@
       "Bash(.venv/bin/python -c \"import alfred.agents; import alfred.tools; print\\('package structure ok'\\)\")",
       "Bash(.venv/bin/pip show *)",
       "Bash(.venv/bin/pip install *)",
-      "Bash(.venv/bin/pytest tests/ -v)"
+      "Bash(.venv/bin/pytest tests/ -v)",
+      "Bash(env)"
     ]
   }
 }

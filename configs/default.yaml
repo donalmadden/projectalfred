@@ -4,15 +4,15 @@
 
 llm:
   provider: "anthropic"
-  model: ""               # Set via LLM_MODEL env var or override config
+  model: "claude-haiku-4-5-20251001"
   temperature: 0.0        # Deterministic by default (methodology property 2)
   max_tokens: 4096
 
 cost_routing:
   enabled: true
-  provider: "openai"              # can differ from llm.provider
-  classifier_model: "gpt-4o-mini" # cheap: observation classification, triage
-  generator_model: "gpt-4o"       # expensive: planner, story gen, retro, critique
+  provider: "anthropic"
+  classifier_model: "claude-haiku-4-5-20251001"  # cheap: triage and classification
+  generator_model: "claude-sonnet-4-6"            # expensive: planner, critique, compile
 
 github:
   org: ""                 # Your GitHub org or user
@@ -20,10 +20,10 @@ github:
   token_env_var: "GITHUB_TOKEN"
 
 rag:
-  corpus_path: ""         # Path to directory containing handover documents
+  corpus_path: "docs"
   chunk_size: 1000
   chunk_overlap: 200
-  embedding_model: ""
+  embedding_model: "all-MiniLM-L6-v2"
   index_path: "data/rag_index"
 
 database:

@@ -48,6 +48,9 @@ faiss_index/
 logs/
 *.log
 
+# Scratch
+docs/scratch/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,102 @@
+"""Generate the Phase 6 handover spec using Alfred's own planner pipeline."""
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+import yaml
+from alfred.schemas.config import AlfredConfig
+from alfred.tools.rag import index_corpus
+
+SPRINT_GOAL = (
+    "Phase 6: Evaluations and tests — property-based tests, evaluation harness, "
+    "coverage gates, and CI integration for the Alfred agent coordination system."
+)
+CONFIG_PATH = Path(__file__).parent.parent / "configs" / "default.yaml"
+OUTPUT_PATH = Path(__file__).parent.parent / "docs" / "ALFRED_HANDOVER_5_DRAFT.md"
+
+
+def main() -> None:
+    with open(CONFIG_PATH) as f:
+        config = AlfredConfig.model_validate(yaml.safe_load(f))
+
+    print("Indexing corpus...")
+    n = index_corpus(
+        config.rag.corpus_path,
+        config.rag.index_path,
+        config.rag.embedding_model,
+    )
+    print(f"  {n} chunks indexed from {config.rag.corpus_path!r}")
+
+    from alfred.schemas.agent import BoardState, PlannerInput
+    from alfred.schemas.handover import HandoverContext, HandoverDocument
+    from alfred.agents.planner import run_planner
+    from alfred.orchestrator import _run_critique_loop
+    from alfred.tools.llm import resolve_model
+    from alfred.tools.persistence import get_velocity_history
+    from alfred.tools.rag import retrieve
+    import datetime
+
+    chunks = retrieve(SPRINT_GOAL, config.rag.index_path, top_k=5)
+    print(f"  {len(chunks)} RAG chunks retrieved")
+
+    board = BoardState()
+    if config.github.org and config.github.project_number:
+        token = os.environ.get(config.github.token_env_var, "")
+        if token:
+            from alfred.tools.github_api import get_board_state
+
+            board = get_board_state(
+                config.github.org,
+                config.github.project_number,
+                token,
+            )
+
+    velocity = []
+    if config.database.path:
+        velocity = get_velocity_history(config.database.path, sprint_count=10)
+
+    plan_provider, plan_model = resolve_model("plan", config)
+    print(f"Calling planner ({plan_provider}/{plan_model})...")
+    planner_out = run_planner(
+        PlannerInput(
+            board_state=board,
+            velocity_history=velocity,
+            sprint_goal=SPRINT_GOAL,
+            prior_handover_summaries=chunks,
+        ),
+        provider=plan_provider,
+        model=plan_model,
+        db_path=config.database.path,
+    )
+
+    temp_handover = HandoverDocument(
+        id="ALFRED_HANDOVER_5_DRAFT",
+        title="Phase 6 Draft",
+        date=datetime.date.today(),
+        author="alfred",
+        context=HandoverContext(narrative=""),
+    )
+    print("Running critique loop...")
+    best_draft = _run_critique_loop(
+        planner_out.draft_handover_markdown,
+        temp_handover,
+        config,
+        config.database.path,
+    )
+
+    OUTPUT_PATH.write_text(best_draft)
+    print(f"\nDraft written to {OUTPUT_PATH}")
+    print(f"Critique iterations: {len(temp_handover.critique_history)}")
+    print("\n--- DRAFT PREVIEW (first 60 lines) ---")
+    lines = best_draft.splitlines()
+    print("\n".join(lines[:60]))
+    if len(lines) > 60:
+        print(f"\n... ({len(lines) - 60} more lines in {OUTPUT_PATH})")
+
+
+if __name__ == "__main__":
+    main()
