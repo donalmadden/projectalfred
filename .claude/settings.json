@@ -12,7 +12,8 @@
       "Bash(.venv/bin/pytest tests/ -v)",
       "Bash(env)",
       "Bash(python scripts/validate_alfred_handover.py docs/ALFRED_HANDOVER_5_DRAFT.md)",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(git push *)"
     ]
   }
 }
