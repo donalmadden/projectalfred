@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import yaml
+
 from alfred.schemas.config import AlfredConfig
 from alfred.tools.rag import index_corpus
 
@@ -31,15 +32,16 @@ def main() -> None:
     )
     print(f"  {n} chunks indexed from {config.rag.corpus_path!r}")
 
-    from alfred.schemas.agent import BoardState, PlannerInput
-    from alfred.schemas.handover import HandoverContext, HandoverDocument
+    import datetime
+
     from alfred.agents.planner import load_canonical_template, run_planner
     from alfred.orchestrator import _run_critique_loop
+    from alfred.schemas.agent import BoardState, PlannerInput
+    from alfred.schemas.handover import HandoverContext, HandoverDocument
     from alfred.tools.git_log import read_git_log
     from alfred.tools.llm import resolve_model
     from alfred.tools.persistence import get_velocity_history
     from alfred.tools.rag import retrieve
-    import datetime
 
     chunks = retrieve(SPRINT_GOAL, config.rag.index_path, top_k=5)
     print(f"  {len(chunks)} RAG chunks retrieved")
