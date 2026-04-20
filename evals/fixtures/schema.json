@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AlfredEvalFixture",
+  "description": "Schema for Alfred evaluation fixtures. Every file in evals/fixtures/*.json (except this file) must validate against this schema.",
+  "type": "object",
+  "required": ["id", "description", "fixture_type", "input", "expected", "tolerance"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique fixture identifier, used in the eval report."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable explanation of what this fixture tests."
+    },
+    "fixture_type": {
+      "type": "string",
+      "enum": ["orchestration", "checkpoint_rejection", "planner_output"],
+      "description": "Determines which scorer function is used."
+    },
+    "input": {
+      "type": "object",
+      "description": "Input snapshot for the fixture. Shape depends on fixture_type."
+    },
+    "mock_llm_response": {
+      "description": "Dict the mocked LLM provider returns. Null when the fixture requires no LLM call.",
+      "oneOf": [{"type": "object"}, {"type": "null"}]
+    },
+    "expected": {
+      "type": "object",
+      "description": "Expected output fields checked by the scorer. Keys are scorer-specific boolean or string checks."
+    },
+    "tolerance": {
+      "type": "object",
+      "description": "Per-key comparison mode overrides (e.g. 'substring' for contains checks). Empty object uses exact match."
+    }
+  }
+}

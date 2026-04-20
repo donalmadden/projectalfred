@@ -1,0 +1,47 @@
+{
+  "id": "fixture_02_checkpoint_gate_rejection",
+  "description": "Checkpoint gate rejection: a task whose checkpoint receives a STOP verdict raises CheckpointHalt, blocking any subsequent tasks.",
+  "fixture_type": "checkpoint_rejection",
+  "input": {
+    "handover": {
+      "id": "EVAL_CHECKPOINT_REJECT",
+      "title": "Checkpoint Gate Eval",
+      "date": "2026-04-20",
+      "author": "eval",
+      "context": {
+        "narrative": "Task fails its quality checkpoint; orchestrator must raise CheckpointHalt."
+      },
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "Failing task",
+          "goal": "This task fails its checkpoint.",
+          "result": {"completed": false, "output_summary": "Tests failed — 3 failures."},
+          "checkpoints": [
+            {
+              "id": "CP-EVAL-STOP",
+              "question": "Did all tests pass?",
+              "evidence_required": "Paste pytest output.",
+              "decision_table": {
+                "rules": [
+                  {"condition": "Tests failed", "likely_verdict": "stop"}
+                ],
+                "default_verdict": "stop"
+              }
+            }
+          ]
+        },
+        {
+          "id": "T2",
+          "title": "Should not run",
+          "goal": "This task must be blocked by the halted checkpoint above."
+        }
+      ]
+    }
+  },
+  "mock_llm_response": {"matched_index": 0, "reasoning": "fixture: rule 0 matches → stop"},
+  "expected": {
+    "raises_exception": "CheckpointHalt"
+  },
+  "tolerance": {}
+}

@@ -1,0 +1,30 @@
+{
+  "id": "fixture_03_planner_output_structure",
+  "description": "Planner output structure: run_planner with a mocked LLM returns a non-empty draft_handover_markdown and correctly typed decomposition/question lists.",
+  "fixture_type": "planner_output",
+  "input": {
+    "planner_input": {
+      "board_state": {"stories": []},
+      "velocity_history": [],
+      "prior_handover_summaries": [],
+      "git_history_summary": [
+        "abc1234  phase5: task 6 — dogfood #2",
+        "def5678  phase5: task 5 — hitl timeout"
+      ]
+    }
+  },
+  "mock_llm_response": {
+    "draft_handover_markdown": "# Phase 7 Plan\n\n## Context\n\nThis draft was produced by the Planner agent for Phase 7.\n\n## Tasks\n\n- Task 1: Build CI pipeline\n- Task 2: Write documentation",
+    "task_decomposition": ["Build CI pipeline", "Write documentation"],
+    "open_questions": ["Who reviews the CI configuration?"]
+  },
+  "expected": {
+    "draft_handover_markdown_non_empty": true,
+    "task_decomposition_is_list": true,
+    "open_questions_is_list": true,
+    "draft_handover_markdown_contains": "Phase 7"
+  },
+  "tolerance": {
+    "draft_handover_markdown_contains": "substring"
+  }
+}

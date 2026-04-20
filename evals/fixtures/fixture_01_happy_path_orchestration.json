@@ -1,0 +1,37 @@
+{
+  "id": "fixture_01_happy_path_orchestration",
+  "description": "Happy-path orchestration: a document whose tasks all have pre-set results is returned unchanged with all results intact and no exception raised.",
+  "fixture_type": "orchestration",
+  "input": {
+    "handover": {
+      "id": "EVAL_HAPPY_PATH",
+      "title": "Happy Path Eval",
+      "date": "2026-04-20",
+      "author": "eval",
+      "context": {
+        "narrative": "All tasks pre-completed; orchestrator should skip dispatch and return cleanly."
+      },
+      "tasks": [
+        {
+          "id": "T1",
+          "title": "Plan sprint",
+          "goal": "Produce the sprint plan.",
+          "result": {"completed": true, "output_summary": "Sprint plan produced."}
+        },
+        {
+          "id": "T2",
+          "title": "Generate stories",
+          "goal": "Generate user stories.",
+          "result": {"completed": true, "output_summary": "Stories generated."}
+        }
+      ]
+    }
+  },
+  "mock_llm_response": null,
+  "expected": {
+    "returns_handover_document": true,
+    "all_tasks_have_results": true,
+    "no_exception_raised": true
+  },
+  "tolerance": {}
+}
