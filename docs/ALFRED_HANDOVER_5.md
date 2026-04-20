@@ -397,19 +397,28 @@ rg -n "Section 8|Testing Strategy|evals/run_evals.py|Actions" docs/architecture.
 > **Instruction to executor:** After implementation, fill in this section before closing the phase. After promotion to canonical, the Phase 7 Planner will cold-start from this artifact.
 
 **What worked:**
-- *executor to fill*
+- Hypothesis strategies using printable ASCII (`min_codepoint=32, max_codepoint=126`) avoided surrogate-character JSON round-trip failures cleanly.
+- `try/finally` state restoration for `llm._PROVIDERS` and `orchestrator._AGENT_RUNNERS` kept property tests fully isolated between Hypothesis examples.
+- The eval fixture tolerance mechanism (`"substring"` comparison) handled the planner markdown check without hardcoding exact LLM output.
+- `ruff check --fix` auto-resolved 64 of 66 lint issues from pre-existing codebase patterns; only 2 ambiguous-name (`E741`) errors in `handover.py` needed manual fixes.
 
 **What was harder than expected:**
-- *executor to fill*
+- Ruff revealed 59+ pre-existing lint errors across the codebase (UP045, I001, E402, F541, E741) that were not introduced in Phase 6. Required adding four ignore rules and a manual rename pass in `handover.py`.
+- Pyright has 30 pre-existing type errors predating Phase 6; made advisory (`continue-on-error: true`) in CI with an inline comment. Cannot be made blocking without a dedicated type-cleanup phase.
+- Eval fixture 3 (planner output structure) initially failed scoring because `checks["draft_handover_markdown_contains"] = True` (bool) was compared against `expected[...] = "Phase 7"` (str). Required adding a tolerance-aware `_passes()` function to the scorer.
+- `orchestrator.py` coverage settled at 79.2%, not 80%, due to external I/O paths (GitHub API, SQLite, RAG) that are structurally disabled in tests. Per-module threshold set to 79% with documented rationale.
 
 **Decisions made during execution (deviations from this plan):**
-- *executor to fill — each deviation must include: what changed, why, who approved*
+- `EVAL_PASS_THRESHOLD` default changed from `1.0` (handover proposal) to `0.8` — human approved before Task 2 implementation.
+- Coverage thresholds: global 80% approved; per-module proposals (`orchestrator.py` 90%, `planner.py` 85%) overridden by human to `orchestrator.py` 79% (current level) and `planner.py` 80%. Rationale documented in `docs/coverage_baseline.md`.
+- `pyright` made advisory in CI (`continue-on-error: true`) rather than blocking, due to 30 pre-existing errors. Human approved.
+- Phase 7 may raise coverage thresholds autonomously without a separate gate approval — human confirmed.
 
 **Metrics at phase close:**
-- Final global coverage: ___%
-- Property test count: ___
-- Eval fixture count: ___
-- CI pipeline runtime: ___ minutes
-- Open questions resolved: ___/5
+- Final global coverage: 80.9%
+- Property test count: 24 (across 4 modules, ≥100 examples each)
+- Eval fixture count: 3 (pass rate 3/3 = 1.00 ≥ 0.80 threshold)
+- CI pipeline runtime: < 3 minutes (local); GitHub Actions TBD
+- Open questions resolved: 5/5
 
 **next_handover_id:** ALFRED_HANDOVER_6
