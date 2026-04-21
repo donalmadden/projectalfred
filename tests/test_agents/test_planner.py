@@ -14,6 +14,12 @@ from alfred.schemas.agent import (
     RAGChunk,
     VelocityRecord,
 )
+from alfred.schemas.claim_types import ClaimCategory
+from alfred.schemas.validator_findings import (
+    FormattedFinding,
+    PathFinding,
+    PlacementFinding,
+)
 from alfred.tools import llm
 
 # ---------------------------------------------------------------------------
@@ -195,6 +201,39 @@ def test_prompt_references_methodology_properties() -> None:
     assert "Reasoning/execution isolation" in prompt
 
 
+def test_prompt_includes_claim_taxonomy_and_placement_rules() -> None:
+    captured = _capture_prompt()
+    planner.run_planner(_minimal_input(), provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "CLAIM TAXONOMY & PLACEMENT RULES" in prompt
+    assert "REFERENCE_DOC" in prompt
+    assert "PLACEMENT" in prompt
+    assert ".github/workflows/" in prompt
+    assert "cite the relevant rule" in prompt
+
+
+def test_prompt_includes_repo_growth_conventions() -> None:
+    captured = _capture_prompt()
+    planner.run_planner(_minimal_input(), provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "REPO GROWTH CONVENTIONS" in prompt
+    assert "Placement rules:" in prompt
+    assert "Naming conventions:" in prompt
+    assert "Structural rules:" in prompt
+
+
+def test_prompt_includes_partial_state_facts_and_vocabulary() -> None:
+    captured = _capture_prompt()
+    planner.run_planner(_minimal_input(), provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "PARTIAL-STATE FACTS" in prompt
+    assert "declared but unimplemented" in prompt
+    assert "proposed for Phase" in prompt
+
+
 # ---------------------------------------------------------------------------
 # Minimal input (empty board)
 # ---------------------------------------------------------------------------
@@ -232,6 +271,35 @@ def _capture_prompt() -> list[str]:
 
     llm._PROVIDERS["fake"] = fake
     return captured
+
+
+def _typed_findings() -> list[FormattedFinding]:
+    return [
+        FormattedFinding(
+            category=ClaimCategory.CURRENT_PATH,
+            severity="error",
+            human_message="`src/alfred/state/` does not exist in the repo.",
+            evidence="`src/alfred/state/`",
+            section="current_state",
+            finding_object=PathFinding(
+                path="src/alfred/state/",
+                expected_state="exists today",
+            ),
+        ),
+        FormattedFinding(
+            category=ClaimCategory.PLACEMENT,
+            severity="error",
+            human_message="workflow files must live under `.github/workflows/`.",
+            evidence="`ci/release.yml`",
+            section="future_tasks",
+            finding_object=PlacementFinding(
+                artifact_type="workflow",
+                proposed_location="ci/release.yml",
+                canonical_location=".github/workflows/",
+                rule="Workflow files must be placed under `.github/workflows/`.",
+            ),
+        ),
+    ]
 
 
 def test_prompt_injects_scaffold_when_canonical_template_provided() -> None:
@@ -416,6 +484,8 @@ def test_prompt_forbids_contradicting_repo_facts() -> None:
     assert "DO NOT CONTRADICT" in prompt
     assert "mypy" in prompt  # must reference the pyright-vs-mypy guardrail
     assert "api" in prompt.lower()  # must reference the FastAPI-path guardrail
+    assert "Reference Documents" in prompt
+    assert "Citable reference docs" in prompt
 
 
 def test_prompt_omits_repo_facts_block_when_not_supplied() -> None:
@@ -489,17 +559,15 @@ def test_prompt_omits_three_state_vocabulary_when_no_facts() -> None:
 def test_prompt_includes_deterministic_findings_block_when_supplied() -> None:
     captured = _capture_prompt()
     inp = _minimal_input()
-    inp.deterministic_findings = [
-        "[ERROR][CURRENT_PATH] `src/alfred/state/` — does not exist in the repo.",
-        "[ERROR][CURRENT_TOPOLOGY] `executor` — the real agent roster is: compiler, planner.",
-    ]
+    inp.deterministic_findings = _typed_findings()
     planner.run_planner(inp, provider="fake", model="m")
 
     prompt = captured[0]
     assert "DETERMINISTIC VALIDATOR FINDINGS" in prompt
     assert "non-negotiable" in prompt
     assert "src/alfred/state/" in prompt
-    assert "executor" in prompt
+    assert "Structured finding objects" in prompt
+    assert "\"finding_type\": \"placement\"" in prompt
 
 
 def test_prompt_omits_deterministic_findings_block_when_empty() -> None:

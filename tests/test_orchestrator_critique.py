@@ -167,7 +167,7 @@ def test_factual_errors_flow_into_next_planner_input(
     assert received, "planner should have been called for the revision iteration"
     findings = received[0].deterministic_findings
     assert findings, "bad draft should have produced deterministic findings"
-    joined = "\n".join(findings)
+    joined = "\n".join(f.format() for f in findings)
     # The bogus `src/alfred/state/` path is the kind of claim the factual
     # validator catches; the exact message format is covered by validator tests.
     assert "src/alfred/state" in joined or "ERROR" in joined

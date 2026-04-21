@@ -185,15 +185,15 @@ def test_invalid_document_exits_one_via_cli(tmp_path: Path) -> None:
 
 def test_alfred_handover_5_draft_passes_promotion() -> None:
     """The canonical Phase 6 draft must pass the promotion validator."""
-    draft = Path("docs/ALFRED_HANDOVER_5_DRAFT.md")
-    assert draft.is_file(), "docs/ALFRED_HANDOVER_5_DRAFT.md not found"
+    draft = Path("docs/archive/ALFRED_HANDOVER_5_DRAFT.md")
+    assert draft.is_file(), "docs/archive/ALFRED_HANDOVER_5_DRAFT.md not found"
     errors = validate(draft.read_text(encoding="utf-8"))
     assert errors == [], f"Promotion blocked: {errors}"
 
 
 def test_alfred_handover_5_draft_exits_zero_via_cli() -> None:
     result = subprocess.run(
-        [sys.executable, "scripts/validate_alfred_handover.py", "docs/ALFRED_HANDOVER_5_DRAFT.md"],
+        [sys.executable, "scripts/validate_alfred_handover.py", "docs/archive/ALFRED_HANDOVER_5_DRAFT.md"],
         capture_output=True,
         text=True,
     )

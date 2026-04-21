@@ -182,6 +182,16 @@ def test_generate_injects_git_history_into_planner_prompt() -> None:
     assert "GIT HISTORY" in captured[0]
 
 
+def test_compile_returns_422_for_infinity_json_scalar(client: TestClient) -> None:
+    response = client.post(
+        "/compile",
+        content=b"Infinity",
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["input"] == "inf"
+
+
 # ---------------------------------------------------------------------------
 # POST /evaluate
 # ---------------------------------------------------------------------------

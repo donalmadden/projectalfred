@@ -17,6 +17,15 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from alfred.schemas.repo_conventions import (
+    PartialStateFact,
+    PartialStateType,
+    RepoGrowthFacts,
+    infer_repo_growth_facts,
+    phase_label_from_handover_text,
+)
+from alfred.tools.docs_policy import iter_policy_paths, read_citable_docs
+
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Files that represent "not a module" (package markers, caches, dunder files).
@@ -73,6 +82,7 @@ _ENDPOINT_RE = re.compile(
     r"""^@app\.(?P<method>get|post|put|delete|patch)\(\s*["'](?P<path>[^"']+)["']""",
     re.MULTILINE,
 )
+_HANDOVER_NUMBER_RE = re.compile(r"ALFRED_HANDOVER_(?P<number>\d+)(?:_[A-Z0-9_]+)?\.md$")
 
 
 def read_api_surface(repo_root: Optional[Path] = None) -> dict[str, object]:
@@ -130,16 +140,14 @@ def read_packaging_state(repo_root: Optional[Path] = None) -> dict[str, object]:
 
 
 def read_reference_documents(repo_root: Optional[Path] = None) -> list[str]:
-    """Return paths of canonical reference documents under ``docs/`` that exist today."""
+    """Return citable markdown docs according to the docs lifecycle policy."""
     root = repo_root or _REPO_ROOT
-    docs = root / "docs"
-    if not docs.is_dir():
-        return []
-    names: list[str] = []
-    for p in sorted(docs.iterdir()):
-        if p.is_file() and p.suffix == ".md":
-            names.append(f"docs/{p.name}")
-    return names
+    return read_citable_docs(root)
+
+
+def read_repo_growth_facts(repo_root: Optional[Path] = None) -> RepoGrowthFacts:
+    """Return the typed repo-growth conventions inferred from the workspace."""
+    return infer_repo_growth_facts(repo_root or _REPO_ROOT)
 
 
 def read_repo_conventions(repo_root: Optional[Path] = None) -> dict[str, str]:
@@ -149,45 +157,191 @@ def read_repo_conventions(repo_root: Optional[Path] = None) -> dict[str, str]:
     new files. The validator uses them to flag future-task proposals that land
     in the wrong directory.
     """
+    growth = read_repo_growth_facts(repo_root)
+    placement = {rule.artifact_type: rule.canonical_root for rule in growth.placement_rules}
     return {
-        "workflow_root": ".github/workflows/",
-        "schema_package_root": "src/alfred/schemas/",
-        "agent_package_root": "src/alfred/agents/",
-        "tool_package_root": "src/alfred/tools/",
-        "script_root": "scripts/",
-        "test_root": "tests/",
-        "docs_root": "docs/",
+        "workflow_root": placement.get("workflow", ".github/workflows/"),
+        "schema_package_root": placement.get("schema", "src/alfred/schemas/"),
+        "agent_package_root": placement.get("agent", "src/alfred/agents/"),
+        "tool_package_root": placement.get("tool", "src/alfred/tools/"),
+        "script_root": placement.get("script", "scripts/"),
+        "test_root": placement.get("test", "tests/"),
+        "docs_root": placement.get("doc", "docs/"),
         "config_root": "configs/",
     }
 
 
-def read_partial_state_facts(repo_root: Optional[Path] = None) -> dict[str, str]:
-    """Return labeled facts about items declared but not yet implemented.
+def _latest_handover_doc(repo_root: Path) -> Optional[Path]:
+    docs = repo_root / "docs"
+    ranked: list[tuple[int, str, Path]] = []
+    policy_paths = iter_policy_paths(
+        repo_root=repo_root,
+        start_path=docs,
+        citable=True,
+        authoritative=True,
+        markdown_only=True,
+    )
+    candidates = policy_paths if policy_paths else sorted(docs.glob("ALFRED_HANDOVER_*.md"))
+    for path in candidates:
+        if "_DRAFT" in path.stem:
+            continue
+        match = _HANDOVER_NUMBER_RE.match(path.name)
+        if not match:
+            continue
+        ranked.append((int(match.group("number")), path.name, path))
+    if not ranked:
+        return None
+    ranked.sort()
+    return ranked[-1][2]
 
-    Each value is a human-readable description suitable for injection into
-    a planner prompt. Keys are stable identifiers; values change as the repo
-    evolves.
-    """
+
+def _add_declared_path_state(
+    facts: list[PartialStateFact],
+    *,
+    repo_root: Path,
+    handover_path: Path,
+    handover_text: str,
+    state_key: str,
+    state_type: PartialStateType,
+    label: str,
+    implementation_location: str,
+    expected_vocabulary: str,
+    aliases: list[str],
+) -> None:
+    if implementation_location not in handover_text:
+        return
+    if (repo_root / implementation_location).exists():
+        return
+    rel_handover = handover_path.relative_to(repo_root).as_posix()
+    facts.append(
+        PartialStateFact(
+            state_key=state_key,
+            state_type=state_type,
+            label=label,
+            is_declared=True,
+            is_implemented=False,
+            declared_location=f"{rel_handover} (future task reference)",
+            implementation_location=implementation_location,
+            description=(
+                f"{label} is declared in {rel_handover} but the implementation target "
+                f"`{implementation_location}` does not exist yet."
+            ),
+            expected_vocabulary=expected_vocabulary,
+            aliases=aliases,
+        )
+    )
+
+
+def read_partial_state_facts(repo_root: Optional[Path] = None) -> list[PartialStateFact]:
+    """Return typed facts for declared-but-not-yet-implemented repo states."""
     root = repo_root or _REPO_ROOT
     pkg = read_packaging_state(root)
-    facts: dict[str, str] = {}
+    facts: list[PartialStateFact] = []
 
     if pkg["cli_script_entry"] and not pkg["cli_module_exists"]:
-        facts["cli_module"] = (
-            f"CLI script entry declared ({pkg['cli_script_entry']}) "
-            f"but src/alfred/cli.py is absent"
-        )
-    elif pkg["cli_script_entry"] and pkg["cli_module_exists"]:
-        facts["cli_module"] = (
-            f"CLI script entry declared ({pkg['cli_script_entry']}) "
-            f"and src/alfred/cli.py exists"
+        facts.append(
+            PartialStateFact(
+                state_key="cli_module",
+                state_type=PartialStateType.CLI,
+                label="CLI entry point",
+                is_declared=True,
+                is_implemented=False,
+                declared_location="pyproject.toml [project.scripts]",
+                implementation_location="src/alfred/cli.py",
+                description=(
+                    f"CLI script entry `{pkg['cli_script_entry']}` is declared in "
+                    "pyproject.toml but `src/alfred/cli.py` does not exist yet."
+                ),
+                expected_vocabulary="declared but unimplemented",
+                aliases=["cli", "alfred cli", "cli entry point", "alfred.cli:main"],
+            )
         )
 
-    release_workflow = root / ".github" / "workflows" / "release.yml"
-    if not release_workflow.exists():
-        facts["release_workflow"] = (
-            ".github/workflows/release.yml is not yet present"
+    latest_handover = _latest_handover_doc(root)
+    if latest_handover is not None:
+        handover_text = latest_handover.read_text(encoding="utf-8")
+        phase_label = phase_label_from_handover_text(handover_text)
+        planned_vocab = f"proposed for {phase_label}"
+
+        _add_declared_path_state(
+            facts,
+            repo_root=root,
+            handover_path=latest_handover,
+            handover_text=handover_text,
+            state_key="release_workflow",
+            state_type=PartialStateType.WORKFLOW,
+            label="Release workflow",
+            implementation_location=".github/workflows/release.yml",
+            expected_vocabulary=planned_vocab,
+            aliases=[
+                "release workflow",
+                "release.yml",
+                ".github/workflows/release.yml",
+            ],
         )
+        _add_declared_path_state(
+            facts,
+            repo_root=root,
+            handover_path=latest_handover,
+            handover_text=handover_text,
+            state_key="health_schema",
+            state_type=PartialStateType.SCHEMA,
+            label="Health schema",
+            implementation_location="src/alfred/schemas/health.py",
+            expected_vocabulary=planned_vocab,
+            aliases=[
+                "health schema",
+                "healthcheck model",
+                "src/alfred/schemas/health.py",
+            ],
+        )
+        _add_declared_path_state(
+            facts,
+            repo_root=root,
+            handover_path=latest_handover,
+            handover_text=handover_text,
+            state_key="operations_doc",
+            state_type=PartialStateType.DOC,
+            label="Operations runbook",
+            implementation_location="docs/operations.md",
+            expected_vocabulary=planned_vocab,
+            aliases=[
+                "operations doc",
+                "operations runbook",
+                "docs/operations.md",
+            ],
+        )
+
+        real_endpoints = set(read_api_surface(root)["endpoints"])
+        rel_handover = latest_handover.relative_to(root).as_posix()
+        for state_key, label, signature, endpoint_path in (
+            ("healthz_entry_point", "Health liveness endpoint", "GET /healthz", "/healthz"),
+            ("readyz_entry_point", "Readiness endpoint", "GET /readyz", "/readyz"),
+        ):
+            if signature not in handover_text or signature in real_endpoints:
+                continue
+            facts.append(
+                PartialStateFact(
+                    state_key=state_key,
+                    state_type=PartialStateType.ENTRY_POINT,
+                    label=label,
+                    is_declared=True,
+                    is_implemented=False,
+                    declared_location=f"{rel_handover} (future task reference)",
+                    implementation_location=f"src/alfred/api.py -> {signature}",
+                    description=(
+                        f"{label} `{signature}` is declared in {rel_handover} but is not "
+                        "implemented in the FastAPI surface today."
+                    ),
+                    expected_vocabulary=planned_vocab,
+                    aliases=[
+                        label.lower(),
+                        signature.lower(),
+                        endpoint_path,
+                        f"{endpoint_path} endpoint",
+                    ],
+                )
+            )
 
     return facts
 
@@ -205,6 +359,8 @@ def build_repo_facts_summary(repo_root: Optional[Path] = None) -> list[str]:
     top_level = read_top_level_packages(root)
     api = read_api_surface(root)
     pkg = read_packaging_state(root)
+    reference_docs = read_reference_documents(root)
+    growth = read_repo_growth_facts(root)
 
     lines: list[str] = []
     lines.append(
@@ -231,14 +387,37 @@ def build_repo_facts_summary(repo_root: Optional[Path] = None) -> list[str]:
         f"cli_entry={pkg['cli_script_entry']}"
     )
     lines.append(
+        "Citable reference docs: "
+        + (", ".join(reference_docs) if reference_docs else "(none)")
+    )
+    lines.append(
         f"Type checker: {'pyright' if pkg['uses_pyright'] else 'none'}"
         + (" (mypy IS NOT in use)" if not pkg["uses_mypy"] else " (mypy present)")
     )
     partial = read_partial_state_facts(root)
-    for fact in partial.values():
-        lines.append(f"Partial state: {fact}")
-    conventions = read_repo_conventions(root)
-    lines.append("Repo-growth conventions:")
-    for label, path in conventions.items():
-        lines.append(f"  {label}: {path}")
+    if partial:
+        lines.append("Partial-state facts:")
+        for fact in partial:
+            lines.append(
+                f"  {fact.state_type.value} / {fact.label}: {fact.description}"
+            )
+            lines.append(
+                f"  Declared={fact.is_declared}, Implemented={fact.is_implemented}, "
+                f"Vocabulary=\"{fact.expected_vocabulary}\""
+            )
+
+    lines.append("Repo-growth placement rules:")
+    for rule in growth.placement_rules:
+        lines.append(
+            f"  {rule.artifact_type}: root={rule.canonical_root}, pattern={rule.pattern}"
+        )
+    lines.append("Repo-growth naming conventions:")
+    for rule in growth.naming_conventions:
+        lines.append(f"  {rule.artifact_type}: {rule.pattern}")
+    lines.append("Repo-growth structural rules:")
+    for rule in growth.structural_rules:
+        lines.append(
+            f"  {rule.artifact_type}: required={rule.required_shape}; "
+            f"forbidden={rule.forbidden_shape}"
+        )
     return lines

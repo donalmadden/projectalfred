@@ -40,6 +40,43 @@ def _wrap_current_state(body: str, *, context_extra: str = "") -> str:
     return "\n".join(parts)
 
 
+def _build_partial_state_repo(tmp_path: Path) -> Path:
+    (tmp_path / "src" / "alfred" / "agents").mkdir(parents=True)
+    (tmp_path / "src" / "alfred" / "tools").mkdir(parents=True)
+    (tmp_path / "src" / "alfred").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "docs").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / "src" / "alfred" / "api.py").write_text(
+        "from fastapi import FastAPI\n"
+        "app = FastAPI()\n\n"
+        '@app.get("/dashboard")\n'
+        "def dashboard(): ...\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: ci\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'alfred'\n"
+        "[project.scripts]\nalfred = 'alfred.cli:main'\n"
+        "[tool.pyright]\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs" / "ALFRED_HANDOVER_6.md").write_text(
+        "# Alfred's Handover Document #6 — Phase 7\n\n"
+        "## CONTEXT — READ THIS FIRST\n"
+        "**id:** ALFRED_HANDOVER_6\n"
+        "**date:** 2026-04-20\n"
+        "**author:** Planner\n\n"
+        "## WHAT THIS PHASE PRODUCES\n"
+        "- `.github/workflows/release.yml`\n"
+        "- `src/alfred/schemas/health.py`\n"
+        "- `docs/operations.md`\n"
+        "- `GET /healthz`\n"
+        "- `GET /readyz`\n",
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
 # ---------------------------------------------------------------------------
 # Path existence checks (R2: invented module paths)
 # ---------------------------------------------------------------------------
@@ -282,7 +319,7 @@ def test_broken_draft_fixture_fails() -> None:
     [
         "FastAPI lives in `src/alfred/api.py`.",
         "See `src/alfred/agents/planner.py` for planner logic.",
-        "`docs/architecture.md` describes the overall layout.",
+        "`docs/protocol/architecture.md` describes the overall layout.",
     ],
 )
 def test_correct_current_state_claims_pass(clean_body: str) -> None:
@@ -323,6 +360,23 @@ def test_existence_denial_suppresses_path_finding() -> None:
     assert not path_findings, "Negated path claim must not produce a finding"
 
 
+def test_complex_prose_with_embedded_clauses_is_still_negated() -> None:
+    md = _wrap_current_state(
+        "Although `src/alfred/state/`, which older drafts sometimes mention, "
+        "does not exist today, `src/alfred/api.py` does."
+    )
+    findings = validate_current_state_facts(md)
+    path_findings = [f for f in findings if "src/alfred/state" in f.evidence]
+    assert not path_findings
+
+
+def test_negation_with_unusual_punctuation_is_respected() -> None:
+    md = _wrap_current_state("`src/alfred/state/` does not exist; do not refer to it as real.")
+    findings = validate_current_state_facts(md)
+    path_findings = [f for f in findings if "src/alfred/state" in f.evidence]
+    assert not path_findings
+
+
 def test_bad_reference_doc_path_flagged() -> None:
     # A docs path that doesn't exist in the inventory must be flagged as REFERENCE_DOC.
     md = _wrap_current_state(
@@ -335,17 +389,88 @@ def test_bad_reference_doc_path_flagged() -> None:
 
 
 def test_good_reference_doc_path_passes() -> None:
-    # A docs path that actually exists in the inventory must not be flagged.
-    # Use a path we know exists (any real .md in docs/).
-    from alfred.tools.repo_facts import read_reference_documents
-    real_docs = read_reference_documents()
-    if not real_docs:
-        pytest.skip("No docs/*.md files found in repo")
-    real_path = real_docs[0]
-    md = _wrap_current_state(f"See `{real_path}` for architecture details.")
+    md = _wrap_current_state("See `docs/protocol/architecture.md` for architecture details.")
     findings = validate_current_state_facts(md)
     ref_findings = [f for f in findings if f.category == ClaimCategory.REFERENCE_DOC]
-    assert not ref_findings, f"Real doc path `{real_path}` must not be flagged"
+    assert not ref_findings, "Known-good architecture doc must not be flagged"
+
+
+def test_reference_doc_missing_metadata_flagged(tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir(parents=True)
+    (tmp_path / "docs" / "ALFRED_HANDOVER_6.md").write_text(
+        "# Alfred's Handover Document #6 — Phase 7\n\n"
+        "## WHAT EXISTS TODAY\nReal state.\n",
+        encoding="utf-8",
+    )
+    md = _wrap_current_state("See `docs/ALFRED_HANDOVER_6.md` for the current protocol.")
+    findings = validate_current_state_facts(md, repo_root=tmp_path)
+    ref_findings = [f for f in findings if f.category == ClaimCategory.REFERENCE_DOC]
+    assert ref_findings
+    assert any(
+        getattr(f.finding_object, "issue_type", "") == "missing_metadata"
+        for f in ref_findings
+    )
+
+
+def test_reference_doc_stale_warns_not_errors(tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir(parents=True)
+    (tmp_path / "docs" / "ALFRED_HANDOVER_4.md").write_text(
+        "# Alfred's Handover Document #4 — Phase 5\n\n"
+        "## CONTEXT — READ THIS FIRST\n"
+        "**id:** ALFRED_HANDOVER_4\n"
+        "**date:** 2025-01-01\n"
+        "**author:** Planner\n\n"
+        "## WHAT EXISTS TODAY\nReal state.\n\n"
+        "## TASK OVERVIEW\nPlan.\n",
+        encoding="utf-8",
+    )
+    md = dedent(
+        """\
+        ## CONTEXT — READ THIS FIRST
+        **id:** ALFRED_HANDOVER_6_DRAFT
+        **date:** 2026-04-21
+        **previous_handover:** ALFRED_HANDOVER_5
+
+        ## WHAT EXISTS TODAY
+        See `docs/ALFRED_HANDOVER_4.md` for historical context.
+        """
+    )
+    findings = validate_current_state_facts(md, repo_root=tmp_path)
+    ref_findings = [f for f in findings if f.category == ClaimCategory.REFERENCE_DOC]
+    assert ref_findings
+    assert any(f.severity == "warning" for f in ref_findings)
+
+
+def test_archived_reference_doc_is_not_citable_under_manifest(tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir(parents=True)
+    (tmp_path / "docs" / "ALFRED_HANDOVER_6_old.md").write_text(
+        "# Alfred's Handover Document #6 — Phase 7\n\n"
+        "## CONTEXT — READ THIS FIRST\n"
+        "**id:** ALFRED_HANDOVER_6_old\n"
+        "**date:** 2026-04-20\n"
+        "**author:** Planner\n\n"
+        "## WHAT EXISTS TODAY\nReal state.\n\n"
+        "## TASK OVERVIEW\nPlan.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs" / "DOCS_MANIFEST.yaml").write_text(
+        "manifest_version: 1\n"
+        "documents:\n"
+        "  - current_path: docs/ALFRED_HANDOVER_6_old.md\n"
+        "    proposed_path: docs/archive/ALFRED_HANDOVER_6_old.md\n"
+        "    indexed: false\n"
+        "    citable: false\n"
+        "    authoritative: false\n"
+        "    lifecycle_status: archive\n",
+        encoding="utf-8",
+    )
+
+    md = _wrap_current_state("See `docs/ALFRED_HANDOVER_6_old.md` for the previous snapshot.")
+    findings = validate_current_state_facts(md, repo_root=tmp_path)
+    ref_findings = [f for f in findings if f.category == ClaimCategory.REFERENCE_DOC]
+
+    assert ref_findings
+    assert "not citable under the docs lifecycle policy" in ref_findings[0].human_message
 
 
 def test_cli_implemented_claim_flagged_when_cli_module_absent(tmp_path: Path) -> None:
@@ -404,6 +529,42 @@ def test_cli_declared_but_unimplemented_phrase_passes(tmp_path: Path) -> None:
     findings = validate_current_state_facts(md, repo_root=tmp_path)
     partial_findings = [f for f in findings if f.category == ClaimCategory.PARTIAL_STATE]
     assert not partial_findings, "Correct 'declared but unimplemented' vocabulary must not flag"
+
+
+def test_workflow_planned_absence_claim_flagged(tmp_path: Path) -> None:
+    repo_root = _build_partial_state_repo(tmp_path)
+    md = _wrap_current_state("There is no planned release workflow yet.")
+    findings = validate_current_state_facts(md, repo_root=repo_root)
+    partial_findings = [f for f in findings if f.category == ClaimCategory.PARTIAL_STATE]
+    assert partial_findings
+    assert any(f.finding_object.state_type.value == "WORKFLOW" for f in partial_findings)
+
+
+def test_schema_planned_absence_claim_flagged(tmp_path: Path) -> None:
+    repo_root = _build_partial_state_repo(tmp_path)
+    md = _wrap_current_state("The health schema is not planned yet.")
+    findings = validate_current_state_facts(md, repo_root=repo_root)
+    partial_findings = [f for f in findings if f.category == ClaimCategory.PARTIAL_STATE]
+    assert partial_findings
+    assert any(f.finding_object.state_type.value == "SCHEMA" for f in partial_findings)
+
+
+def test_doc_planned_absence_claim_flagged(tmp_path: Path) -> None:
+    repo_root = _build_partial_state_repo(tmp_path)
+    md = _wrap_current_state("There is no planned operations runbook.")
+    findings = validate_current_state_facts(md, repo_root=repo_root)
+    partial_findings = [f for f in findings if f.category == ClaimCategory.PARTIAL_STATE]
+    assert partial_findings
+    assert any(f.finding_object.state_type.value == "DOC" for f in partial_findings)
+
+
+def test_entry_point_planned_absence_claim_flagged(tmp_path: Path) -> None:
+    repo_root = _build_partial_state_repo(tmp_path)
+    md = _wrap_current_state("No /healthz endpoint is planned.")
+    findings = validate_current_state_facts(md, repo_root=repo_root)
+    partial_findings = [f for f in findings if f.category == ClaimCategory.PARTIAL_STATE]
+    assert partial_findings
+    assert any(f.finding_object.state_type.value == "ENTRY_POINT" for f in partial_findings)
 
 
 def test_release_workflow_present_claim_flagged() -> None:
@@ -520,6 +681,20 @@ def test_docker_in_future_task_flagged() -> None:
     findings = validate_future_task_realism(md)
     hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
     assert hard_rule, "Expected HARD_RULE finding for Docker in future task"
+
+
+def test_docker_in_future_task_allowed_for_phase7_handover() -> None:
+    md = (
+        "# Alfred's Handover Document #6 — Phase 7\n\n"
+        + _wrap_future_tasks(
+            "### Task 4 — Containerise\n"
+            "Add a Dockerfile for the FastAPI service.\n"
+            "Tests: docker build succeeds."
+        )
+    )
+    findings = validate_future_task_realism(md)
+    hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
+    assert not hard_rule, "Docker should be allowed in a Phase 7 handover"
 
 
 def test_task_without_file_ref_gets_granularity_warning() -> None:

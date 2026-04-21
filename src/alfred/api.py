@@ -8,11 +8,14 @@ call time, never from config.
 """
 from __future__ import annotations
 
+import math
 import os
 from typing import Any, Literal, Optional
 
 import yaml
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from alfred.schemas.agent import (
@@ -150,6 +153,35 @@ class ExpireApprovalsResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoint helpers
 # ---------------------------------------------------------------------------
+
+
+def _make_json_safe(value: Any) -> Any:
+    """Recursively replace NaN/Infinity values with JSON-safe strings."""
+    if isinstance(value, float) and not math.isfinite(value):
+        if math.isnan(value):
+            return "nan"
+        if value > 0:
+            return "inf"
+        return "-inf"
+    if isinstance(value, dict):
+        return {key: _make_json_safe(inner) for key, inner in value.items()}
+    if isinstance(value, list):
+        return [_make_json_safe(inner) for inner in value]
+    if isinstance(value, tuple):
+        return [_make_json_safe(inner) for inner in value]
+    return value
+
+
+@app.exception_handler(RequestValidationError)
+async def handle_request_validation_error(
+    _request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    """Return FastAPI-style 422 responses even when validation data contains Infinity/NaN."""
+    return JSONResponse(
+        status_code=422,
+        content={"detail": _make_json_safe(exc.errors())},
+    )
 
 
 def _get_board(config: AlfredConfig) -> BoardState:

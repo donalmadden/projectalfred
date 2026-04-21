@@ -19,6 +19,8 @@ def fake_repo(tmp_path: Path) -> Path:
     (alfred / "agents").mkdir(parents=True)
     (alfred / "tools").mkdir(parents=True)
     (alfred / "schemas").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / "docs").mkdir(parents=True)
 
     # Package markers
     (alfred / "__init__.py").write_text("")
@@ -55,6 +57,21 @@ def fake_repo(tmp_path: Path) -> Path:
         "alfred = \"alfred.cli:main\"\n\n"
         "[tool.pyright]\n"
         "include = [\"src\"]\n"
+    )
+    (tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: ci\n", encoding="utf-8")
+    (tmp_path / "docs" / "ALFRED_HANDOVER_6.md").write_text(
+        "# Alfred's Handover Document #6 — Phase 7\n\n"
+        "## CONTEXT — READ THIS FIRST\n"
+        "**id:** ALFRED_HANDOVER_6\n"
+        "**date:** 2026-04-20\n"
+        "**author:** Planner\n\n"
+        "## WHAT THIS PHASE PRODUCES\n"
+        "- `src/alfred/schemas/health.py`\n"
+        "- `.github/workflows/release.yml`\n"
+        "- `docs/operations.md`\n"
+        "- `GET /healthz`\n"
+        "- `GET /readyz`\n",
+        encoding="utf-8",
     )
     return tmp_path
 
@@ -134,6 +151,45 @@ def test_read_packaging_state_detects_mypy_when_present(tmp_path: Path) -> None:
     assert state["uses_pyright"] is False
 
 
+def test_read_reference_documents_respects_docs_manifest(tmp_path: Path) -> None:
+    (tmp_path / "docs" / "canonical").mkdir(parents=True)
+    (tmp_path / "docs" / "protocol").mkdir(parents=True)
+    (tmp_path / "docs" / "archive").mkdir(parents=True)
+    (tmp_path / "docs" / "DOCS_MANIFEST.yaml").write_text(
+        "manifest_version: 1\n"
+        "documents:\n"
+        "  - current_path: docs/ALFRED_HANDOVER_5.md\n"
+        "    proposed_path: docs/canonical/ALFRED_HANDOVER_5.md\n"
+        "    indexed: true\n"
+        "    citable: true\n"
+        "    authoritative: true\n"
+        "    lifecycle_status: canonical\n"
+        "  - current_path: docs/architecture.md\n"
+        "    proposed_path: docs/protocol/architecture.md\n"
+        "    indexed: true\n"
+        "    citable: true\n"
+        "    authoritative: true\n"
+        "    lifecycle_status: protocol\n"
+        "  - current_path: docs/ALFRED_HANDOVER_6_old.md\n"
+        "    proposed_path: docs/archive/ALFRED_HANDOVER_6_old.md\n"
+        "    indexed: false\n"
+        "    citable: false\n"
+        "    authoritative: false\n"
+        "    lifecycle_status: archive\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_5.md").write_text("# Canonical\n")
+    (tmp_path / "docs" / "protocol" / "architecture.md").write_text("# Architecture\n")
+    (tmp_path / "docs" / "archive" / "ALFRED_HANDOVER_6_old.md").write_text("# Old\n")
+
+    docs = repo_facts.read_reference_documents(tmp_path)
+
+    assert docs == [
+        "docs/canonical/ALFRED_HANDOVER_5.md",
+        "docs/protocol/architecture.md",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # build_repo_facts_summary — the bullet list injected into the planner prompt.
 # ---------------------------------------------------------------------------
@@ -171,6 +227,35 @@ def test_build_repo_facts_summary_reports_endpoint_count(fake_repo: Path) -> Non
     joined = "\n".join(lines)
     # Three endpoints in the fake repo.
     assert "FastAPI endpoints (3)" in joined
+
+
+def test_build_repo_facts_summary_lists_citable_reference_docs(fake_repo: Path) -> None:
+    lines = repo_facts.build_repo_facts_summary(fake_repo)
+    joined = "\n".join(lines)
+    assert "Citable reference docs:" in joined
+    assert "docs/ALFRED_HANDOVER_6.md" in joined
+
+
+def test_read_partial_state_facts_tracks_multiple_state_types(fake_repo: Path) -> None:
+    facts = repo_facts.read_partial_state_facts(fake_repo)
+    state_types = {fact.state_type.value for fact in facts}
+    assert {"CLI", "WORKFLOW", "SCHEMA", "DOC", "ENTRY_POINT"} <= state_types
+
+
+def test_build_repo_facts_summary_includes_partial_state_vocabulary(fake_repo: Path) -> None:
+    lines = repo_facts.build_repo_facts_summary(fake_repo)
+    joined = "\n".join(lines)
+    assert "Partial-state facts:" in joined
+    assert "declared but unimplemented" in joined
+    assert "proposed for Phase 7" in joined
+
+
+def test_build_repo_facts_summary_includes_repo_growth_rules(fake_repo: Path) -> None:
+    lines = repo_facts.build_repo_facts_summary(fake_repo)
+    joined = "\n".join(lines)
+    assert "Repo-growth placement rules:" in joined
+    assert "Repo-growth naming conventions:" in joined
+    assert "Repo-growth structural rules:" in joined
 
 
 # ---------------------------------------------------------------------------

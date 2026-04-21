@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from alfred.schemas.agent import RAGChunk
+from alfred.tools.docs_policy import infer_repo_root, iter_policy_paths
 
 _COLLECTION_NAME = "handovers"
 _EMBEDDING_MODEL_METADATA_KEY = "embedding_model"
@@ -125,6 +126,21 @@ def _iter_markdown_files(corpus_path: str) -> Iterable[Path]:
     if root.is_file():
         yield root
         return
+    repo_root = infer_repo_root(root)
+    if repo_root is not None:
+        docs_root = repo_root / "docs"
+        try:
+            root.relative_to(docs_root)
+        except ValueError:
+            pass
+        else:
+            yield from iter_policy_paths(
+                repo_root=repo_root,
+                start_path=root,
+                indexed=True,
+                markdown_only=True,
+            )
+            return
     yield from sorted(root.rglob("*.md"))
 
 

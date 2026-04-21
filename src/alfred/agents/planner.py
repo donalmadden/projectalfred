@@ -12,11 +12,20 @@ to llm.complete — this agent does not re-implement that logic.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
 from alfred.schemas.agent import PlannerInput, PlannerOutput
+from alfred.schemas.claim_types import (
+    format_claim_taxonomy_for_prompt,
+    format_placement_rules_for_prompt,
+)
+from alfred.schemas.repo_conventions import (
+    format_repo_growth_facts_for_prompt,
+)
 from alfred.tools import llm
+from alfred.tools.repo_facts import read_partial_state_facts
 
 # Repo root is resolved from this file's location so the template path in
 # config (relative to the repo root) works from any CWD.
@@ -47,6 +56,10 @@ def load_canonical_template(template_path: str) -> Optional[str]:
 
 def _build_prompt(input: PlannerInput) -> str:
     parts: list[str] = []
+    claim_taxonomy = format_claim_taxonomy_for_prompt()
+    placement_rules = format_placement_rules_for_prompt(_REPO_ROOT)
+    repo_growth_facts = format_repo_growth_facts_for_prompt(repo_root=_REPO_ROOT)
+    partial_states = read_partial_state_facts(_REPO_ROOT)
 
     parts.append(
         "You are the Planner agent in a document-mediated, checkpoint-gated "
@@ -58,6 +71,25 @@ def _build_prompt(input: PlannerInput) -> str:
         "3. Reasoning/execution isolation — you are the reasoning side; never execute.\n"
         "4. Inline post-mortem → forward plan — failure analysis lives in the artifact.\n"
         "5. Statelessness by design — each session cold-starts from the document.\n"
+    )
+
+    parts.append(
+        "CLAIM TAXONOMY & PLACEMENT RULES:\n"
+        "The validator classifies findings using the typed categories below. Use\n"
+        "them proactively when drafting so you do not have to learn them from a\n"
+        "rejection after the fact.\n\n"
+        f"{claim_taxonomy}\n\n"
+        "Placement rules you must cite when proposing new files:\n"
+        f"{placement_rules}\n\n"
+        "When proposing a new file or module, explicitly cite the relevant rule\n"
+        "(for example: 'per workflow placement rule, use `.github/workflows/`')."
+    )
+
+    parts.append(
+        "REPO GROWTH CONVENTIONS:\n"
+        "Use the current repository's placement, naming, and structural rules as\n"
+        "generative constraints for future work, not just as post-hoc validator checks.\n\n"
+        f"{repo_growth_facts}"
     )
 
     if input.repo_facts_summary:
@@ -80,6 +112,9 @@ def _build_prompt(input: PlannerInput) -> str:
             "    from missing.\n"
             "  - Do NOT claim the FastAPI app lives anywhere other than the\n"
             "    `FastAPI module path` given below.\n\n"
+            "  - In the final `Reference Documents` block, only cite docs listed in\n"
+            "    the `Citable reference docs` fact. Never cite archive docs, failed\n"
+            "    candidates, or historical continuity inputs.\n\n"
             "THREE-STATE VOCABULARY (use these exact phrases):\n"
             "  When describing any file, module, or workflow, you MUST use one of:\n"
             "  • `exists today` — a concrete file/module visible in the workspace right now.\n"
@@ -89,6 +124,28 @@ def _build_prompt(input: PlannerInput) -> str:
             "  Never collapse 'declared but unimplemented' into either 'exists' or 'missing'.\n"
             "  Any `Partial state:` bullet in the facts below identifies declared-but-absent items.\n\n"
             f"{facts_block}"
+        )
+
+    if partial_states:
+        state_lines: list[str] = []
+        for fact in partial_states:
+            state_lines.append(
+                f"- `{fact.state_type.value}` / {fact.label}: {fact.description}"
+            )
+            state_lines.append(
+                f"  Declared at: {fact.declared_location}; implement at: "
+                f"`{fact.implementation_location}`; vocabulary: `{fact.expected_vocabulary}`"
+            )
+        parts.append(
+            "PARTIAL-STATE FACTS:\n"
+            "These items are declared or planned but not fully implemented in the\n"
+            "workspace yet. Use the exact vocabulary provided and do not flatten a\n"
+            "partial state into either 'exists today' or 'not planned'.\n\n"
+            + "\n".join(state_lines)
+            + "\n\n"
+            "For partial-state facts, use the exact vocabulary provided. Do not say\n"
+            "'exists today' for declared-but-missing features, and do not deny that a\n"
+            "planned artifact exists in the repo's active protocol documents."
         )
 
     identity_lines: list[str] = []
@@ -158,13 +215,26 @@ def _build_prompt(input: PlannerInput) -> str:
         )
 
     if input.deterministic_findings:
-        findings_block = "\n".join(f"  - {f}" for f in input.deterministic_findings)
+        findings_block = "\n".join(f"  - {f.format()}" for f in input.deterministic_findings)
+        findings_json = json.dumps(
+            [finding.model_dump(mode="json") for finding in input.deterministic_findings],
+            indent=2,
+        )
         parts.append(
             "DETERMINISTIC VALIDATOR FINDINGS:\n"
             "Each finding below is a deterministic, non-negotiable failure. You MUST\n"
             "address every ERROR-severity finding before this draft can be promoted.\n"
-            "WARNINGs are advisory but should be considered.\n\n"
-            f"{findings_block}"
+            "WARNINGs are advisory but should be considered.\n"
+            "Parse the structured finding objects directly:\n"
+            "  - `PlacementFinding`: proposed_location is wrong; use canonical_location.\n"
+            "  - `PartialStateFinding`: use correct_vocabulary instead of incorrect_phrasing.\n"
+            "  - `HardRuleFinding`: the proposal violates a forbidden constraint in this phase.\n\n"
+            "Human-readable summary:\n"
+            f"{findings_block}\n\n"
+            "Structured finding objects:\n"
+            "```json\n"
+            f"{findings_json}\n"
+            "```"
         )
 
     if input.git_history_summary:

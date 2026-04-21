@@ -40,6 +40,7 @@ from alfred.schemas.handover import (
     PostMortem,
     TaskResult,
 )
+from alfred.schemas.validator_findings import FormattedFinding
 
 
 class CheckpointHalt(Exception):
@@ -437,14 +438,14 @@ def _run_deterministic_validators(
     draft_markdown: str,
     *,
     warnings_visible: bool,
-) -> tuple[list[str], bool]:
+) -> tuple[list["FormattedFinding"], bool]:
     """Run factual + realism validators against the draft.
 
-    Returns ``(formatted_findings, has_blocking_errors)``. ``formatted_findings``
-    is the list of ``Finding.format()`` strings to forward into the next planner
-    iteration; when ``warnings_visible`` is False only ERROR-severity findings
-    are included. ``has_blocking_errors`` is True when any ERROR finding is
-    present, used by the early-exit condition.
+    Returns ``(visible_findings, has_blocking_errors)``. ``visible_findings`` is
+    the list of typed findings to forward into the next planner iteration; when
+    ``warnings_visible`` is False only ERROR-severity findings are included.
+    ``has_blocking_errors`` is True when any ERROR finding is present, used by
+    the early-exit condition.
     """
     try:
         from scripts.validate_alfred_planning_facts import (
@@ -462,7 +463,7 @@ def _run_deterministic_validators(
         visible = findings
     else:
         visible = [f for f in findings if f.severity == "error"]
-    return [f.format() for f in visible], has_errors
+    return visible, has_errors
 
 
 # ---------------------------------------------------------------------------

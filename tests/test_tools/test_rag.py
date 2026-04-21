@@ -121,3 +121,39 @@ def test_embedder_loaded_once_across_calls(corpus: Path, tmp_path: Path) -> None
     rag.retrieve("widget refactor", index_path, top_k=2)
 
     assert factory_calls["n"] == 1
+
+
+def test_index_corpus_respects_docs_manifest_indexed_flag(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    (docs / "canonical").mkdir(parents=True)
+    (docs / "archive").mkdir(parents=True)
+    (docs / "DOCS_MANIFEST.yaml").write_text(
+        "manifest_version: 1\n"
+        "documents:\n"
+        "  - current_path: docs/doc_alpha.md\n"
+        "    proposed_path: docs/canonical/doc_alpha.md\n"
+        "    indexed: true\n"
+        "    citable: true\n"
+        "    authoritative: true\n"
+        "    lifecycle_status: canonical\n"
+        "  - current_path: docs/doc_beta.md\n"
+        "    proposed_path: docs/archive/doc_beta.md\n"
+        "    indexed: false\n"
+        "    citable: false\n"
+        "    authoritative: false\n"
+        "    lifecycle_status: archive\n",
+        encoding="utf-8",
+    )
+    (docs / "canonical" / "doc_alpha.md").write_text(
+        "# Title\n\n## Context\nAlpha is indexed.\n",
+        encoding="utf-8",
+    )
+    (docs / "archive" / "doc_beta.md").write_text(
+        "# Title\n\n## Context\nBeta must stay out of the index.\n",
+        encoding="utf-8",
+    )
+
+    index_path = str(tmp_path / "index")
+    n = rag.index_corpus(str(docs), index_path, embedding_model="fake-model")
+
+    assert n == 2  # preamble + one section from the indexed doc only

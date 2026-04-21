@@ -18,6 +18,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from alfred.schemas.validator_findings import FormattedFinding
+
 # ---------------------------------------------------------------------------
 # Shared value types
 # ---------------------------------------------------------------------------
@@ -108,12 +110,10 @@ class PlannerInput(BaseModel):
     generation_date: Optional[str] = None
     expected_handover_id: Optional[str] = None
     expected_previous_handover: Optional[str] = None
-    # Formatted findings from the deterministic validators (factual + realism).
-    # Each string is a Finding.format() result. The planner prompt renders these
-    # as non-negotiable failures that must be addressed before the draft can be
-    # promoted. Uses list[str] (not raw Finding objects) to keep the schema
-    # serialisable and prompt rendering trivial.
-    deterministic_findings: list[str] = Field(default_factory=list)
+    # Structured findings from the deterministic validators (factual + realism).
+    # The planner receives both the typed finding object and the human-readable
+    # message so it can address failures deterministically.
+    deterministic_findings: list[FormattedFinding] = Field(default_factory=list)
 
 
 class SprintPlan(BaseModel):

@@ -26,15 +26,35 @@ Exit codes: 0 = valid, 1 = factual failure, 2 = usage/IO error.
 from __future__ import annotations
 
 import argparse
-import enum
 import re
 import sys
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from alfred.schemas.claim_types import ClaimCategory  # noqa: E402
+from alfred.schemas.repo_conventions import PartialStateFact, PartialStateType  # noqa: E402
+from alfred.schemas.validator_findings import (  # noqa: E402
+    FormattedFinding,
+    HardRuleFinding,
+    MetadataFinding,
+    PartialStateFinding,
+    PathFinding,
+    PlacementFinding,
+    PyprojectFinding,
+    ReferenceDocFinding,
+    StructuralFinding,
+    TaskGranularityFinding,
+    ToolingFinding,
+    TopologyFinding,
+)
+from alfred.tools.docs_policy import read_docs_inventory  # noqa: E402
+from alfred.tools.reference_doc_validator import (  # noqa: E402
+    validate_reference_doc_cross_links,
+    validate_reference_doc_freshness,
+    validate_reference_doc_structure,
+)
 from alfred.tools.repo_facts import (  # noqa: E402
     read_agent_modules,
     read_api_surface,
@@ -48,33 +68,89 @@ from alfred.tools.repo_facts import (  # noqa: E402
 # Typed findings
 # ---------------------------------------------------------------------------
 
-
-class ClaimCategory(str, enum.Enum):
-    METADATA = "METADATA"
-    REFERENCE_DOC = "REFERENCE_DOC"
-    CURRENT_PATH = "CURRENT_PATH"
-    CURRENT_TOPOLOGY = "CURRENT_TOPOLOGY"
-    CURRENT_TOOLING = "CURRENT_TOOLING"
-    PARTIAL_STATE = "PARTIAL_STATE"
-    PYPROJECT_STATE = "PYPROJECT_STATE"
-    PLACEMENT = "PLACEMENT"
-    HARD_RULE = "HARD_RULE"
-    TASK_GRANULARITY = "TASK_GRANULARITY"
+Finding = FormattedFinding
 
 
-@dataclass
-class Finding:
-    category: ClaimCategory
-    severity: Literal["error", "warning"]
-    message: str
-    evidence: str
-    section: str
+def _path_finding(
+    *,
+    category: ClaimCategory,
+    message: str,
+    evidence: str,
+    section: str,
+    path: str,
+    expected_state: str,
+) -> Finding:
+    return Finding(
+        category=category,
+        severity="error",
+        human_message=message,
+        evidence=evidence,
+        section=section,
+        finding_object=PathFinding(path=path, expected_state=expected_state),
+    )
 
-    def format(self) -> str:
-        return (
-            f"[{self.severity.upper()}][{self.category.value}] "
-            f"{self.evidence} — {self.message}"
-        )
+
+def _topology_finding(
+    *,
+    evidence: str,
+    message: str,
+    canonical_value: str,
+) -> Finding:
+    return Finding(
+        category=ClaimCategory.CURRENT_TOPOLOGY,
+        severity="error",
+        human_message=message,
+        evidence=evidence,
+        section="current_state",
+        finding_object=TopologyFinding(
+            claimed_value=evidence,
+            canonical_value=canonical_value,
+        ),
+    )
+
+
+def _metadata_finding(
+    *,
+    field_name: str,
+    actual_value: str,
+    expected_value: str,
+    message: str,
+) -> Finding:
+    return Finding(
+        category=ClaimCategory.METADATA,
+        severity="error",
+        human_message=message,
+        evidence=f"{field_name}: {actual_value}",
+        section="metadata",
+        finding_object=MetadataFinding(
+            field_name=field_name,
+            actual_value=actual_value,
+            expected_value=expected_value,
+        ),
+    )
+
+
+def _partial_state_finding(
+    *,
+    fact: PartialStateFact,
+    incorrect_phrasing: str,
+    message: str,
+) -> Finding:
+    return Finding(
+        category=ClaimCategory.PARTIAL_STATE,
+        severity="error",
+        human_message=message,
+        evidence=incorrect_phrasing,
+        section="current_state",
+        finding_object=PartialStateFinding(
+            state_type=fact.state_type,
+            subject=fact.label,
+            incorrect_phrasing=incorrect_phrasing,
+            correct_vocabulary=fact.expected_vocabulary,
+            declared_location=fact.declared_location,
+            implementation_location=fact.implementation_location,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -258,40 +334,110 @@ def _check_path_existence(text: str, repo_root: Path) -> list[Finding]:
             continue
         if _claim_is_negated(text, (match.start(), match.end())):
             continue
-        findings.append(Finding(
-            category=ClaimCategory.CURRENT_PATH,
-            severity="error",
-            message=f"{normalised!r} does not exist in the repo.",
-            evidence=f"`{candidate}`",
-            section="current_state",
-        ))
+        findings.append(
+            _path_finding(
+                category=ClaimCategory.CURRENT_PATH,
+                message=f"{normalised!r} does not exist in the repo.",
+                evidence=f"`{candidate}`",
+                section="current_state",
+                path=normalised,
+                expected_state="exists today",
+            )
+        )
     return findings
 
 
 _DOCS_MD_RE = re.compile(r"`(?P<path>docs/[A-Za-z0-9_./\-]+\.md)`")
 
 
-def _check_reference_documents(text: str, repo_root: Path) -> list[Finding]:
-    """Flag backtick-quoted docs/*.md paths not in the canonical docs inventory."""
+def _check_reference_documents(
+    text: str,
+    repo_root: Path,
+    *,
+    reference_date: str | None = None,
+) -> list[Finding]:
+    """Validate referenced docs for existence, structure, cross-links, and freshness."""
     findings: list[Finding] = []
-    inventory = set(read_reference_documents(repo_root))
+    citable_inventory = set(read_reference_documents(repo_root))
+    docs_inventory = set(read_docs_inventory(repo_root))
     seen: set[str] = set()
     for match in _DOCS_MD_RE.finditer(text):
         path = match.group("path")
         if path in seen:
             continue
         seen.add(path)
-        if path in inventory:
+        if path not in citable_inventory:
+            if _claim_is_negated(text, (match.start(), match.end())):
+                continue
+            findings.append(
+                Finding(
+                    category=ClaimCategory.REFERENCE_DOC,
+                    severity="error",
+                    human_message="not citable under the docs lifecycle policy.",
+                    evidence=f"`{path}`",
+                    section="current_state",
+                    finding_object=ReferenceDocFinding(
+                        doc_path=path,
+                        issue_type="not_found",
+                        expected_state="present and citable under docs policy",
+                        actual_state="missing or policy-excluded",
+                    ),
+                )
+            )
             continue
-        if _claim_is_negated(text, (match.start(), match.end())):
-            continue
-        findings.append(Finding(
-            category=ClaimCategory.REFERENCE_DOC,
-            severity="error",
-            message="not in the canonical docs inventory.",
-            evidence=f"`{path}`",
-            section="current_state",
-        ))
+
+        for issue in validate_reference_doc_structure(path, repo_root):
+            findings.append(
+                Finding(
+                    category=ClaimCategory.REFERENCE_DOC,
+                    severity="error",
+                    human_message=issue.message,
+                    evidence=f"`{path}`",
+                    section="current_state",
+                    finding_object=ReferenceDocFinding(
+                        doc_path=path,
+                        issue_type=issue.issue_type,
+                        expected_state="structurally valid reference doc",
+                        actual_state=issue.message,
+                    ),
+                )
+            )
+        for issue in validate_reference_doc_cross_links(path, docs_inventory, repo_root):
+            findings.append(
+                Finding(
+                    category=ClaimCategory.REFERENCE_DOC,
+                    severity="error",
+                    human_message=issue.message,
+                    evidence=f"`{path}`",
+                    section="current_state",
+                    finding_object=ReferenceDocFinding(
+                        doc_path=path,
+                        issue_type=issue.issue_type,
+                        expected_state="all docs/*.md cross-links resolve",
+                        actual_state=issue.message,
+                    ),
+                )
+            )
+        for issue in validate_reference_doc_freshness(
+            path,
+            reference_date=reference_date,
+            repo_root=repo_root,
+        ):
+            findings.append(
+                Finding(
+                    category=ClaimCategory.REFERENCE_DOC,
+                    severity="warning",
+                    human_message=issue.message,
+                    evidence=f"`{path}`",
+                    section="current_state",
+                    finding_object=ReferenceDocFinding(
+                        doc_path=path,
+                        issue_type=issue.issue_type,
+                        expected_state="recent enough to be a grounding source",
+                        actual_state=issue.message,
+                    ),
+                )
+            )
     return findings
 
 
@@ -305,25 +451,23 @@ def _check_api_topology(text: str, repo_root: Path) -> list[Finding]:
     # Reject directory-style claims about the API module.
     bad_api_dir = re.search(r"`src/alfred/api/(?:[A-Za-z0-9_.]+)?`", text)
     if bad_api_dir:
-        findings.append(Finding(
-            category=ClaimCategory.CURRENT_TOPOLOGY,
-            severity="error",
-            message=(
-                f"the real FastAPI app lives in `{real_path}` (single file)."
-            ),
-            evidence=bad_api_dir.group(0),
-            section="current_state",
-        ))
+        findings.append(
+            _topology_finding(
+                evidence=bad_api_dir.group(0),
+                message=f"the real FastAPI app lives in `{real_path}` (single file).",
+                canonical_value=real_path,
+            )
+        )
 
     # Reject explicit `src/alfred/api/main.py` references in current-state text.
     if "src/alfred/api/main.py" in text:
-        findings.append(Finding(
-            category=ClaimCategory.CURRENT_TOPOLOGY,
-            severity="error",
-            message=f"the FastAPI entrypoint is `{real_path}`.",
-            evidence="`src/alfred/api/main.py`",
-            section="current_state",
-        ))
+        findings.append(
+            _topology_finding(
+                evidence="`src/alfred/api/main.py`",
+                message=f"the FastAPI entrypoint is `{real_path}`.",
+                canonical_value=real_path,
+            )
+        )
 
     # Endpoint count claim: phrases like "five endpoints", "5 endpoints".
     _NUM_WORDS = {
@@ -339,16 +483,16 @@ def _check_api_topology(text: str, repo_root: Path) -> list[Finding]:
         raw = m.group("count").lower()
         claimed = int(raw) if raw.isdigit() else _NUM_WORDS[raw]
         if claimed != len(real_endpoints):
-            findings.append(Finding(
-                category=ClaimCategory.CURRENT_TOPOLOGY,
-                severity="error",
-                message=(
-                    f"does not match the real FastAPI surface "
-                    f"({len(real_endpoints)} endpoints in {real_path})."
-                ),
-                evidence=f"{claimed} endpoints",
-                section="current_state",
-            ))
+            findings.append(
+                _topology_finding(
+                    evidence=f"{claimed} endpoints",
+                    message=(
+                        f"does not match the real FastAPI surface "
+                        f"({len(real_endpoints)} endpoints in {real_path})."
+                    ),
+                    canonical_value=f"{len(real_endpoints)} endpoints in {real_path}",
+                )
+            )
             break  # one mismatch is enough; don't double-count
 
     return findings
@@ -381,16 +525,16 @@ def _check_agent_roster(text: str, repo_root: Path) -> list[Finding]:
             re.IGNORECASE,
         )
         if bad == "executor" and roster_re.search(text):
-            findings.append(Finding(
-                category=ClaimCategory.CURRENT_TOPOLOGY,
-                severity="error",
-                message=(
-                    f"the real roster under src/alfred/agents/ is: "
-                    f"{', '.join(real_agents)}."
-                ),
-                evidence="planner, executor, reviewer",
-                section="current_state",
-            ))
+            findings.append(
+                _topology_finding(
+                    evidence="planner, executor, reviewer",
+                    message=(
+                        f"the real roster under src/alfred/agents/ is: "
+                        f"{', '.join(real_agents)}."
+                    ),
+                    canonical_value=", ".join(real_agents),
+                )
+            )
             continue
         found = False
         for p in patterns:
@@ -398,16 +542,16 @@ def _check_agent_roster(text: str, repo_root: Path) -> list[Finding]:
                 found = True
                 break
         if found:
-            findings.append(Finding(
-                category=ClaimCategory.CURRENT_TOPOLOGY,
-                severity="error",
-                message=(
-                    f"the real agent roster under src/alfred/agents/ is: "
-                    f"{', '.join(real_agents)}."
-                ),
-                evidence=f"`{bad}`",
-                section="current_state",
-            ))
+            findings.append(
+                _topology_finding(
+                    evidence=f"`{bad}`",
+                    message=(
+                        f"the real agent roster under src/alfred/agents/ is: "
+                        f"{', '.join(real_agents)}."
+                    ),
+                    canonical_value=", ".join(real_agents),
+                )
+            )
     return findings
 
 
@@ -425,16 +569,19 @@ def _check_top_level_packages(text: str, repo_root: Path) -> list[Finding]:
         if name not in real_top:
             if _claim_is_negated(text, (m.start(), m.end())):
                 continue
-            findings.append(Finding(
-                category=ClaimCategory.CURRENT_PATH,
-                severity="error",
-                message=(
-                    f"not present. Real top-level names: "
-                    f"{', '.join(sorted(real_top))}."
-                ),
-                evidence=f"`src/alfred/{name}/`",
-                section="current_state",
-            ))
+            findings.append(
+                _path_finding(
+                    category=ClaimCategory.CURRENT_PATH,
+                    message=(
+                        f"not present. Real top-level names: "
+                        f"{', '.join(sorted(real_top))}."
+                    ),
+                    evidence=f"`src/alfred/{name}/`",
+                    section="current_state",
+                    path=f"src/alfred/{name}/",
+                    expected_state="real top-level package or module",
+                )
+            )
     return findings
 
 
@@ -448,13 +595,19 @@ def _check_type_checker(text: str) -> list[Finding]:
         window = text[window_start:window_end].lower()
         if "not " in window or "never " in window or "is not" in window:
             continue
-        findings.append(Finding(
-            category=ClaimCategory.CURRENT_TOOLING,
-            severity="error",
-            message="the repo uses `pyright`. Phase 6 explicitly forbids adding `mypy`.",
-            evidence="`mypy`",
-            section="current_state",
-        ))
+        findings.append(
+            Finding(
+                category=ClaimCategory.CURRENT_TOOLING,
+                severity="error",
+                human_message="the repo uses `pyright`. Phase 6 explicitly forbids adding `mypy`.",
+                evidence="`mypy`",
+                section="current_state",
+                finding_object=ToolingFinding(
+                    claimed_tool="mypy",
+                    allowed_tool="pyright",
+                ),
+            )
+        )
         break
     return findings
 
@@ -475,78 +628,125 @@ def _check_pyproject_state(text: str, repo_root: Path) -> list[Finding]:
     lowered = text.lower()
     for phrase in bad_phrases:
         if phrase in lowered:
-            findings.append(Finding(
-                category=ClaimCategory.PYPROJECT_STATE,
-                severity="error",
-                message=(
-                    f"`pyproject.toml` is present with "
-                    f"[project]={state['has_project_table']} and "
-                    f"[project.scripts]={state['has_project_scripts']}."
-                ),
-                evidence=phrase,
-                section="current_state",
-            ))
+            findings.append(
+                Finding(
+                    category=ClaimCategory.PYPROJECT_STATE,
+                    severity="error",
+                    human_message=(
+                        f"`pyproject.toml` is present with "
+                        f"[project]={state['has_project_table']} and "
+                        f"[project.scripts]={state['has_project_scripts']}."
+                    ),
+                    evidence=phrase,
+                    section="current_state",
+                    finding_object=PyprojectFinding(
+                        claimed_state=phrase,
+                        actual_state=(
+                            f"[project]={state['has_project_table']}, "
+                            f"[project.scripts]={state['has_project_scripts']}"
+                        ),
+                    ),
+                )
+            )
             break
     return findings
 
 
-def _check_partial_state(text: str, repo_root: Path) -> list[Finding]:
-    """Flag claims that misrepresent declared-but-unimplemented state.
+def _match_any_phrase(text: str, phrases: list[str]) -> Optional[str]:
+    for phrase in phrases:
+        if phrase in text:
+            return phrase
+    return None
 
-    When the CLI entry is declared in pyproject.toml but src/alfred/cli.py is
-    absent, a draft must not claim either "the CLI is implemented" or "there is
-    no CLI at all". The correct vocabulary is "declared but unimplemented".
-    """
-    findings: list[Finding] = []
-    pkg = read_packaging_state(repo_root)
-    partial = read_partial_state_facts(repo_root)
-    lower = text.lower()
 
-    if "cli_module" in partial and not pkg.get("cli_module_exists"):
-        # CLI declared but absent — flag over-confident claims in either direction
-        implemented_phrases = (
-            "cli is implemented",
-            "cli exists",
-            "cli is present",
-            "cli is available",
-            "alfred cli is implemented",
-            "the cli is implemented",
+def _positive_partial_state_phrases(fact: PartialStateFact) -> list[str]:
+    phrases: list[str] = []
+    for alias in fact.aliases:
+        lower = alias.lower()
+        phrases.extend(
+            [
+                f"{lower} exists",
+                f"{lower} exists today",
+                f"{lower} is implemented",
+                f"{lower} is present",
+                f"{lower} is available",
+                f"{lower} is already present",
+                f"{lower} already exists",
+                f"{lower} is already wired",
+            ]
         )
-        absent_phrases = (
+    if fact.state_type == PartialStateType.ENTRY_POINT:
+        phrases.append(f"{fact.label.lower()} already exists")
+    return phrases
+
+
+def _absence_partial_state_phrases(fact: PartialStateFact) -> list[str]:
+    if fact.state_type == PartialStateType.CLI:
+        return [
             "no cli",
             "cli does not exist",
             "cli is missing",
             "cli is absent",
             "no alfred cli",
             "there is no cli",
-        )
-        for phrase in implemented_phrases:
-            if phrase in lower:
-                findings.append(Finding(
-                    category=ClaimCategory.PARTIAL_STATE,
-                    severity="error",
+        ]
+
+    label = fact.label.lower()
+    phrases = [
+        f"no {label} is planned",
+        f"{label} is not planned",
+        f"there is no planned {label}",
+    ]
+    for alias in fact.aliases:
+        lower = alias.lower()
+        if "/" in lower:
+            phrases.extend(
+                [
+                    f"no {lower} endpoint is planned",
+                    f"{lower} endpoint is not planned",
+                ]
+            )
+    return phrases
+
+
+def _check_partial_state(text: str, repo_root: Path) -> list[Finding]:
+    """Flag claims that misrepresent declared-but-unimplemented state.
+
+    The repo can contain states that are declared in config or protocol docs but
+    not implemented yet. Those states must be described with the vocabulary
+    supplied by ``read_partial_state_facts()``.
+    """
+    findings: list[Finding] = []
+    partial = read_partial_state_facts(repo_root)
+    lower = text.lower()
+
+    for fact in partial:
+        positive_phrase = _match_any_phrase(lower, _positive_partial_state_phrases(fact))
+        if positive_phrase:
+            findings.append(
+                _partial_state_finding(
+                    fact=fact,
+                    incorrect_phrasing=positive_phrase,
                     message=(
-                        "CLI script entry is declared in pyproject.toml "
-                        "but src/alfred/cli.py does not yet exist. "
-                        "Use 'declared but unimplemented'."
+                        f"{fact.label} is not implemented today. Use "
+                        f"`{fact.expected_vocabulary}` for this partial state."
                     ),
-                    evidence=phrase,
-                    section="current_state",
-                ))
-                break
-        for phrase in absent_phrases:
-            if phrase in lower:
-                findings.append(Finding(
-                    category=ClaimCategory.PARTIAL_STATE,
-                    severity="error",
+                )
+            )
+            continue
+
+        absence_phrase = _match_any_phrase(lower, _absence_partial_state_phrases(fact))
+        if absence_phrase:
+            findings.append(
+                _partial_state_finding(
+                    fact=fact,
+                    incorrect_phrasing=absence_phrase,
                     message=(
-                        "CLI script entry is declared in pyproject.toml. "
-                        "Use 'declared but unimplemented', not an absence claim."
+                        f"{fact.label} is already declared at {fact.declared_location}. "
+                        f"Use `{fact.expected_vocabulary}`, not a total-absence claim."
                     ),
-                    evidence=phrase,
-                    section="current_state",
-                ))
-                break
+                )
+            )
 
     return findings
 
@@ -599,43 +799,47 @@ def _check_metadata(
         # filename stem plus `_DRAFT` (both are legitimate for a draft).
         legit = {filename_id, filename_id + "_DRAFT"}
         if declared_id not in legit:
-            findings.append(Finding(
-                category=ClaimCategory.METADATA,
-                severity="error",
-                message=(
-                    f"does not match the filename `{source_path.name}` "
-                    f"(expected `{filename_id}` or `{filename_id}_DRAFT`)."
-                ),
-                evidence=f"id: {declared_id}",
-                section="metadata",
-            ))
+            findings.append(
+                _metadata_finding(
+                    field_name="id",
+                    actual_value=declared_id,
+                    expected_value=f"{filename_id} or {filename_id}_DRAFT",
+                    message=(
+                        f"does not match the filename `{source_path.name}` "
+                        f"(expected `{filename_id}` or `{filename_id}_DRAFT`)."
+                    ),
+                )
+            )
 
     if expected_id and declared_id and declared_id not in {expected_id, expected_id + "_DRAFT"}:
-        findings.append(Finding(
-            category=ClaimCategory.METADATA,
-            severity="error",
-            message=f"does not match expected id `{expected_id}` supplied to the validator.",
-            evidence=f"id: {declared_id}",
-            section="metadata",
-        ))
+        findings.append(
+            _metadata_finding(
+                field_name="id",
+                actual_value=declared_id,
+                expected_value=expected_id,
+                message=f"does not match expected id `{expected_id}` supplied to the validator.",
+            )
+        )
 
     if expected_previous and declared_prev and declared_prev != expected_previous:
-        findings.append(Finding(
-            category=ClaimCategory.METADATA,
-            severity="error",
-            message=f"does not match expected `{expected_previous}` supplied to the validator.",
-            evidence=f"previous_handover: {declared_prev}",
-            section="metadata",
-        ))
+        findings.append(
+            _metadata_finding(
+                field_name="previous_handover",
+                actual_value=declared_prev,
+                expected_value=expected_previous,
+                message=f"does not match expected `{expected_previous}` supplied to the validator.",
+            )
+        )
 
     if expected_date and declared_date and declared_date != expected_date:
-        findings.append(Finding(
-            category=ClaimCategory.METADATA,
-            severity="error",
-            message=f"does not match expected `{expected_date}` supplied to the validator.",
-            evidence=f"date: {declared_date}",
-            section="metadata",
-        ))
+        findings.append(
+            _metadata_finding(
+                field_name="date",
+                actual_value=declared_date,
+                expected_value=expected_date,
+                message=f"does not match expected `{expected_date}` supplied to the validator.",
+            )
+        )
 
     return findings
 
@@ -659,11 +863,12 @@ def validate_current_state_facts(
     sections = extract_sections(markdown)
     current = current_state_text(sections)
     ctx = context_block(sections)
+    ctx_date = _extract_metadata_date(ctx)
 
     findings: list[Finding] = []
     findings.extend(_check_metadata(ctx, source_path, expected_id, expected_previous, expected_date))
     findings.extend(_check_path_existence(current, root))
-    findings.extend(_check_reference_documents(current, root))
+    findings.extend(_check_reference_documents(current, root, reference_date=ctx_date))
     findings.extend(_check_api_topology(current, root))
     findings.extend(_check_agent_roster(current, root))
     findings.extend(_check_top_level_packages(current, root))
@@ -741,13 +946,21 @@ def _check_workflow_placement(text: str) -> list[Finding]:
             continue
         filename = Path(path).name.lower()
         if filename in _CI_FILENAMES or _CI_DIR_RE.match(path):
-            findings.append(Finding(
-                category=ClaimCategory.PLACEMENT,
-                severity="error",
-                message="workflow files must live under `.github/workflows/`.",
-                evidence=f"`{path}`",
-                section="future_tasks",
-            ))
+            findings.append(
+                Finding(
+                    category=ClaimCategory.PLACEMENT,
+                    severity="error",
+                    human_message="workflow files must live under `.github/workflows/`.",
+                    evidence=f"`{path}`",
+                    section="future_tasks",
+                    finding_object=PlacementFinding(
+                        artifact_type="workflow",
+                        proposed_location=path,
+                        canonical_location=".github/workflows/",
+                        rule="Workflow files must be placed under `.github/workflows/`.",
+                    ),
+                )
+            )
     return findings
 
 
@@ -755,20 +968,35 @@ def _check_schema_placement(text: str) -> list[Finding]:
     """Flag src/alfred/schemas.py (single file) — schemas must be a package."""
     findings: list[Finding] = []
     if re.search(r"`src/alfred/schemas\.py`", text):
-        findings.append(Finding(
-            category=ClaimCategory.PLACEMENT,
-            severity="error",
-            message=(
-                "schemas should be a package (`src/alfred/schemas/`), "
-                "not a single file `src/alfred/schemas.py`."
-            ),
-            evidence="`src/alfred/schemas.py`",
-            section="future_tasks",
-        ))
+        findings.append(
+            Finding(
+                category=ClaimCategory.PLACEMENT,
+                severity="error",
+                human_message=(
+                    "schemas should be a package (`src/alfred/schemas/`), "
+                    "not a single file `src/alfred/schemas.py`."
+                ),
+                evidence="`src/alfred/schemas.py`",
+                section="future_tasks",
+                finding_object=StructuralFinding(
+                    artifact_type="schema",
+                    proposed_shape="single file `src/alfred/schemas.py`",
+                    required_shape="module inside `src/alfred/schemas/`",
+                    rule="Schemas live in the `src/alfred/schemas/` package.",
+                ),
+            )
+        )
     return findings
 
 
-def _check_future_hard_rules(text: str) -> list[Finding]:
+def _extract_handover_phase(markdown: str) -> Optional[int]:
+    match = re.search(r"\bPhase\s+(?P<phase>\d+)\b", markdown, re.IGNORECASE)
+    if not match:
+        return None
+    return int(match.group("phase"))
+
+
+def _check_future_hard_rules(text: str, *, phase_number: Optional[int] = None) -> list[Finding]:
     """Flag future-task content that violates CLAUDE.md hard rules."""
     findings: list[Finding] = []
 
@@ -776,13 +1004,20 @@ def _check_future_hard_rules(text: str) -> list[Finding]:
         window = text[max(0, m.start() - 40):m.end() + 40].lower()
         if "not " in window or "never " in window or "no mypy" in window:
             continue
-        findings.append(Finding(
-            category=ClaimCategory.HARD_RULE,
-            severity="error",
-            message="mypy is forbidden (repo uses pyright; CLAUDE.md hard rule).",
-            evidence="`mypy`",
-            section="future_tasks",
-        ))
+        findings.append(
+            Finding(
+                category=ClaimCategory.HARD_RULE,
+                severity="error",
+                human_message="mypy is forbidden (repo uses pyright; CLAUDE.md hard rule).",
+                evidence="`mypy`",
+                section="future_tasks",
+                finding_object=HardRuleFinding(
+                    rule_name="no_mypy",
+                    violation="future task proposes mypy",
+                    constraint="use pyright; do not introduce mypy",
+                ),
+            )
+        )
         break
 
     docker_re = re.compile(
@@ -793,16 +1028,26 @@ def _check_future_hard_rules(text: str) -> list[Finding]:
         window = text[max(0, m.start() - 40):m.end() + 40].lower()
         if "not " in window or "never " in window or "no docker" in window:
             continue
-        findings.append(Finding(
-            category=ClaimCategory.HARD_RULE,
-            severity="error",
-            message=(
-                "Docker is forbidden until Phase 7 "
-                "(CLAUDE.md: 'No Docker yet — local venv first, containerise in Phase 7')."
-            ),
-            evidence=m.group(0),
-            section="future_tasks",
-        ))
+        if phase_number is not None and phase_number >= 7:
+            break
+        findings.append(
+            Finding(
+                category=ClaimCategory.HARD_RULE,
+                severity="error",
+                human_message=(
+                    "Docker is forbidden until Phase 7 "
+                    "(CLAUDE.md: 'No Docker yet — local venv first, containerise in Phase 7')."
+                ),
+                evidence=m.group(0),
+                section="future_tasks",
+                finding_object=HardRuleFinding(
+                    rule_name="no_docker_yet",
+                    violation=f"future task proposes {m.group(0)}",
+                    constraint="Docker is out of scope until the allowed phase",
+                    phase_allowed="Phase 7",
+                ),
+            )
+        )
         break
 
     return findings
@@ -828,13 +1073,19 @@ def _check_task_granularity(text: str) -> list[Finding]:
         ))
 
         if not has_path or not has_test_ref:
-            findings.append(Finding(
-                category=ClaimCategory.TASK_GRANULARITY,
-                severity="warning",
-                message="task lacks a quoted file path or a test/validation reference.",
-                evidence=header,
-                section="future_tasks",
-            ))
+            findings.append(
+                Finding(
+                    category=ClaimCategory.TASK_GRANULARITY,
+                    severity="warning",
+                    human_message="task lacks a quoted file path or a test/validation reference.",
+                    evidence=header,
+                    section="future_tasks",
+                    finding_object=TaskGranularityFinding(
+                        task_heading=header,
+                        missing_requirement="quoted file path or test/validation reference",
+                    ),
+                )
+            )
 
     return findings
 
@@ -851,11 +1102,12 @@ def validate_future_task_realism(
     """
     sections = extract_sections(markdown)
     future_text = _future_task_text(sections)
+    phase_number = _extract_handover_phase(markdown)
 
     findings: list[Finding] = []
     findings.extend(_check_workflow_placement(future_text))
     findings.extend(_check_schema_placement(future_text))
-    findings.extend(_check_future_hard_rules(future_text))
+    findings.extend(_check_future_hard_rules(future_text, phase_number=phase_number))
     findings.extend(_check_task_granularity(future_text))
     return findings
 
