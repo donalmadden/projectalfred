@@ -117,6 +117,10 @@ class CritiqueEntry(BaseModel):
     iteration: int
     quality_score: float
     validation_issues: list[str]
+    # Deterministic validator findings (formatted via Finding.format()) recorded
+    # alongside the judge's validation_issues so the post-mortem captures both
+    # feedback channels for the iteration. Empty when no validators were run.
+    deterministic_findings: list[str] = Field(default_factory=list)
     revised_at: Optional[str] = None  # ISO timestamp
 
 

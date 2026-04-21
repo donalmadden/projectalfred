@@ -157,6 +157,16 @@ def _build_prompt(input: PlannerInput) -> str:
             "Please revise the draft to address these issues."
         )
 
+    if input.deterministic_findings:
+        findings_block = "\n".join(f"  - {f}" for f in input.deterministic_findings)
+        parts.append(
+            "DETERMINISTIC VALIDATOR FINDINGS:\n"
+            "Each finding below is a deterministic, non-negotiable failure. You MUST\n"
+            "address every ERROR-severity finding before this draft can be promoted.\n"
+            "WARNINGs are advisory but should be considered.\n\n"
+            f"{findings_block}"
+        )
+
     if input.git_history_summary:
         history_block = "\n".join(input.git_history_summary)
         parts.append(

@@ -484,3 +484,26 @@ def test_prompt_omits_three_state_vocabulary_when_no_facts() -> None:
     planner.run_planner(_minimal_input(), provider="fake", model="m")
     prompt = captured[0]
     assert "THREE-STATE VOCABULARY" not in prompt
+
+
+def test_prompt_includes_deterministic_findings_block_when_supplied() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.deterministic_findings = [
+        "[ERROR][CURRENT_PATH] `src/alfred/state/` — does not exist in the repo.",
+        "[ERROR][CURRENT_TOPOLOGY] `executor` — the real agent roster is: compiler, planner.",
+    ]
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "DETERMINISTIC VALIDATOR FINDINGS" in prompt
+    assert "non-negotiable" in prompt
+    assert "src/alfred/state/" in prompt
+    assert "executor" in prompt
+
+
+def test_prompt_omits_deterministic_findings_block_when_empty() -> None:
+    captured = _capture_prompt()
+    planner.run_planner(_minimal_input(), provider="fake", model="m")
+    prompt = captured[0]
+    assert "DETERMINISTIC VALIDATOR FINDINGS" not in prompt

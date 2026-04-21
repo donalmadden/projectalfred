@@ -167,6 +167,10 @@ class PlannerAgentConfig(BaseModel):
     enabled: bool = True
     max_critique_iterations: int = Field(default=2, ge=0)
     critique_quality_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    # When True, deterministic validator WARNINGs (not just ERRORs) are forwarded
+    # into the next planner iteration via `PlannerInput.deterministic_findings`.
+    # Default False — only ERROR findings block early exit and feed back.
+    realism_warnings_visible: bool = False
 
 
 class AgentsConfig(BaseModel):

@@ -347,6 +347,7 @@ def _run_critique_loop(
     planner_cfg = config.agents.planner
     max_iters: int = planner_cfg.max_critique_iterations
     threshold: float = planner_cfg.critique_quality_threshold
+    warnings_visible: bool = planner_cfg.realism_warnings_visible
 
     if max_iters <= 0:
         return draft_markdown
@@ -378,12 +379,20 @@ def _run_critique_loop(
         score: float = judge_out.overall_quality_score or 0.0
         issues: list[str] = [v.description for v in judge_out.validation_issues]
 
+        # Deterministic validators — strict factual gate plus realism gate.
+        # Findings are formatted to strings so they survive prompt rendering.
+        det_findings, det_blocking = _run_deterministic_validators(
+            current_draft, warnings_visible=warnings_visible
+        )
+
         if score > best_score:
             best_score = score
             best_draft = current_draft
 
-        # Stop early if draft passes quality bar
-        if not issues or score >= threshold:
+        # Stop early when both feedback channels are clean. Judge issues alone
+        # being empty is no longer sufficient — deterministic ERROR findings
+        # must also be absent before the draft can be considered finished.
+        if (not issues or score >= threshold) and not det_blocking:
             break
 
         # Only revise when there is another iteration to run
@@ -392,6 +401,7 @@ def _run_critique_loop(
                 iteration=iteration,
                 quality_score=score,
                 validation_issues=issues,
+                deterministic_findings=det_findings,
                 revised_at=datetime.datetime.utcnow().isoformat(),
             )
             handover.critique_history.append(entry)
@@ -412,6 +422,7 @@ def _run_critique_loop(
                     generation_date=generation_date,
                     expected_handover_id=expected_handover_id,
                     expected_previous_handover=expected_previous_handover,
+                    deterministic_findings=det_findings,
                 ),
                 provider=plan_provider,
                 model=plan_model,
@@ -420,6 +431,38 @@ def _run_critique_loop(
             current_draft = planner_out.draft_handover_markdown
 
     return best_draft
+
+
+def _run_deterministic_validators(
+    draft_markdown: str,
+    *,
+    warnings_visible: bool,
+) -> tuple[list[str], bool]:
+    """Run factual + realism validators against the draft.
+
+    Returns ``(formatted_findings, has_blocking_errors)``. ``formatted_findings``
+    is the list of ``Finding.format()`` strings to forward into the next planner
+    iteration; when ``warnings_visible`` is False only ERROR-severity findings
+    are included. ``has_blocking_errors`` is True when any ERROR finding is
+    present, used by the early-exit condition.
+    """
+    try:
+        from scripts.validate_alfred_planning_facts import (
+            validate_current_state_facts,
+            validate_future_task_realism,
+        )
+    except Exception:
+        return [], False
+
+    findings = list(validate_current_state_facts(draft_markdown)) + list(
+        validate_future_task_realism(draft_markdown)
+    )
+    has_errors = any(f.severity == "error" for f in findings)
+    if warnings_visible:
+        visible = findings
+    else:
+        visible = [f for f in findings if f.severity == "error"]
+    return [f.format() for f in visible], has_errors
 
 
 # ---------------------------------------------------------------------------
