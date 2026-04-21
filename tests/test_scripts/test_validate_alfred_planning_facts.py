@@ -14,7 +14,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from validate_alfred_planning_facts import validate  # noqa: E402
+from validate_alfred_planning_facts import (  # noqa: E402
+    ClaimCategory,
+    validate,
+    validate_current_state_facts,
+)
 
 # ---------------------------------------------------------------------------
 # Minimal markdown fixtures
@@ -289,3 +293,127 @@ def test_correct_current_state_claims_pass(clean_body: str) -> None:
         any(key in e for key in ("does not exist", "mypy", "executor"))
         for e in errors
     )
+
+
+# ---------------------------------------------------------------------------
+# A6 regression tests for known blind spots
+# ---------------------------------------------------------------------------
+
+
+def test_imperative_must_not_break_does_not_suppress_path_finding() -> None:
+    # "must not break `src/alfred/state/`" — the path doesn't exist, so it
+    # should still be flagged. The imperative negation must not suppress the finding.
+    md = _wrap_current_state(
+        "Care must not break `src/alfred/state/` during the migration."
+    )
+    findings = validate_current_state_facts(md)
+    path_findings = [f for f in findings if "src/alfred/state" in f.evidence]
+    assert path_findings, "Expected a finding for non-existent `src/alfred/state/`"
+    assert path_findings[0].category == ClaimCategory.CURRENT_PATH
+
+
+def test_existence_denial_suppresses_path_finding() -> None:
+    # "`src/alfred/state/` does not exist" — negated, must not flag.
+    md = _wrap_current_state(
+        "`src/alfred/state/` does not exist yet; it will be added in Phase 4."
+    )
+    findings = validate_current_state_facts(md)
+    path_findings = [f for f in findings if "src/alfred/state" in f.evidence]
+    assert not path_findings, "Negated path claim must not produce a finding"
+
+
+def test_bad_reference_doc_path_flagged() -> None:
+    # A docs path that doesn't exist in the inventory must be flagged as REFERENCE_DOC.
+    md = _wrap_current_state(
+        "See `docs/handovers/ALFRED_HANDOVER_5.md` for the previous session context."
+    )
+    findings = validate_current_state_facts(md)
+    ref_findings = [f for f in findings if f.category == ClaimCategory.REFERENCE_DOC]
+    assert ref_findings, "Expected REFERENCE_DOC finding for non-existent doc path"
+    assert "docs/handovers/ALFRED_HANDOVER_5.md" in ref_findings[0].evidence
+
+
+def test_good_reference_doc_path_passes() -> None:
+    # A docs path that actually exists in the inventory must not be flagged.
+    # Use a path we know exists (any real .md in docs/).
+    from alfred.tools.repo_facts import read_reference_documents
+    real_docs = read_reference_documents()
+    if not real_docs:
+        pytest.skip("No docs/*.md files found in repo")
+    real_path = real_docs[0]
+    md = _wrap_current_state(f"See `{real_path}` for architecture details.")
+    findings = validate_current_state_facts(md)
+    ref_findings = [f for f in findings if f.category == ClaimCategory.REFERENCE_DOC]
+    assert not ref_findings, f"Real doc path `{real_path}` must not be flagged"
+
+
+def test_cli_implemented_claim_flagged_when_cli_module_absent(tmp_path: Path) -> None:
+    # Build a fake repo where pyproject.toml declares a CLI entry but cli.py is absent.
+    (tmp_path / "src" / "alfred" / "agents").mkdir(parents=True)
+    (tmp_path / "src" / "alfred" / "tools").mkdir(parents=True)
+    (tmp_path / "src" / "alfred" / "api.py").write_text("", encoding="utf-8")
+    pyproject = (
+        "[project]\nname = 'alfred'\n"
+        "[project.scripts]\nalfred = 'alfred.cli:main'\n"
+        "[tool.pyright]\n"
+    )
+    (tmp_path / "pyproject.toml").write_text(pyproject, encoding="utf-8")
+    # cli.py is deliberately absent
+
+    md = _wrap_current_state("The CLI is implemented and available via `alfred` command.")
+    findings = validate_current_state_facts(md, repo_root=tmp_path)
+    partial_findings = [f for f in findings if f.category == ClaimCategory.PARTIAL_STATE]
+    assert partial_findings, "Expected PARTIAL_STATE finding for 'CLI is implemented' claim"
+
+
+def test_cli_absence_claim_flagged_when_cli_declared(tmp_path: Path) -> None:
+    # Same fake repo — CLI declared but not implemented — and draft says "no CLI".
+    (tmp_path / "src" / "alfred" / "agents").mkdir(parents=True)
+    (tmp_path / "src" / "alfred" / "tools").mkdir(parents=True)
+    (tmp_path / "src" / "alfred" / "api.py").write_text("", encoding="utf-8")
+    pyproject = (
+        "[project]\nname = 'alfred'\n"
+        "[project.scripts]\nalfred = 'alfred.cli:main'\n"
+        "[tool.pyright]\n"
+    )
+    (tmp_path / "pyproject.toml").write_text(pyproject, encoding="utf-8")
+
+    md = _wrap_current_state("There is no CLI; no alfred CLI is available yet.")
+    findings = validate_current_state_facts(md, repo_root=tmp_path)
+    partial_findings = [f for f in findings if f.category == ClaimCategory.PARTIAL_STATE]
+    assert partial_findings, "Expected PARTIAL_STATE finding for absence claim when CLI is declared"
+
+
+def test_cli_declared_but_unimplemented_phrase_passes(tmp_path: Path) -> None:
+    # The correct vocabulary "declared but unimplemented" must not produce a finding.
+    (tmp_path / "src" / "alfred" / "agents").mkdir(parents=True)
+    (tmp_path / "src" / "alfred" / "tools").mkdir(parents=True)
+    (tmp_path / "src" / "alfred" / "api.py").write_text("", encoding="utf-8")
+    pyproject = (
+        "[project]\nname = 'alfred'\n"
+        "[project.scripts]\nalfred = 'alfred.cli:main'\n"
+        "[tool.pyright]\n"
+    )
+    (tmp_path / "pyproject.toml").write_text(pyproject, encoding="utf-8")
+
+    md = _wrap_current_state(
+        "The CLI script entry is declared but unimplemented: "
+        "`alfred.cli:main` appears in pyproject.toml but `src/alfred/cli.py` does not exist yet."
+    )
+    findings = validate_current_state_facts(md, repo_root=tmp_path)
+    partial_findings = [f for f in findings if f.category == ClaimCategory.PARTIAL_STATE]
+    assert not partial_findings, "Correct 'declared but unimplemented' vocabulary must not flag"
+
+
+def test_release_workflow_present_claim_flagged() -> None:
+    # `.github/workflows/release.yml` does not exist in this repo; a current-state
+    # claim that it does must be flagged as CURRENT_PATH.
+    md = _wrap_current_state(
+        "CI is handled via `.github/workflows/release.yml` which runs on every tag."
+    )
+    findings = validate_current_state_facts(md)
+    path_findings = [
+        f for f in findings
+        if f.category == ClaimCategory.CURRENT_PATH and "release.yml" in f.evidence
+    ]
+    assert path_findings, "Expected CURRENT_PATH finding for non-existent release.yml"

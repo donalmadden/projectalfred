@@ -26,10 +26,12 @@ Exit codes: 0 = valid, 1 = factual failure, 2 = usage/IO error.
 from __future__ import annotations
 
 import argparse
+import enum
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -37,8 +39,40 @@ from alfred.tools.repo_facts import (  # noqa: E402
     read_agent_modules,
     read_api_surface,
     read_packaging_state,
+    read_partial_state_facts,
+    read_reference_documents,
     read_top_level_packages,
 )
+
+# ---------------------------------------------------------------------------
+# Typed findings
+# ---------------------------------------------------------------------------
+
+
+class ClaimCategory(str, enum.Enum):
+    METADATA = "METADATA"
+    REFERENCE_DOC = "REFERENCE_DOC"
+    CURRENT_PATH = "CURRENT_PATH"
+    CURRENT_TOPOLOGY = "CURRENT_TOPOLOGY"
+    CURRENT_TOOLING = "CURRENT_TOOLING"
+    PARTIAL_STATE = "PARTIAL_STATE"
+    PYPROJECT_STATE = "PYPROJECT_STATE"
+
+
+@dataclass
+class Finding:
+    category: ClaimCategory
+    severity: Literal["error", "warning"]
+    message: str
+    evidence: str
+    section: str
+
+    def format(self) -> str:
+        return (
+            f"[{self.severity.upper()}][{self.category.value}] "
+            f"{self.evidence} — {self.message}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Section extraction
@@ -132,38 +166,82 @@ def context_block(sections: dict[str, str]) -> str:
 # Backtick-quoted local path in markdown body. Matches only paths rooted in
 # known top-level directories so random prose like `0.1.0` is not flagged.
 _PATH_RE = re.compile(
-    r"`(?P<path>(?:docs|src|scripts|tests|configs|evals)/[A-Za-z0-9_./\-]+)`"
+    r"`(?P<path>(?:docs|src|scripts|tests|configs|evals|\.github)/[A-Za-z0-9_./\-]+)`"
 )
 
 
-_NEGATION_CUES = (
-    " no ", " not ", " never ", " without ", " isn't ", " doesn't ",
-    "does not exist", "is not present", "is missing", "not yet exist",
-    "no such", "removed", "deleted",
+# Sentence boundary separators used for negation scoping.
+# Matches double-newlines, period-space after a word char, and fence markers.
+_SENTENCE_SEP_RE = re.compile(r"\n\n|(?<=\w)\. |```")
+
+# Existence-denial phrases that can appear after the claim ("X does not exist").
+_EXISTENCE_DENIAL_POST = (
+    "does not exist",
+    "is not present",
+    "is missing",
+    "not yet exist",
+    "no longer exists",
+    "has been removed",
+    "has been deleted",
+)
+
+# Imperative negation words — negate an ACTION on the path, not its existence.
+# "must not break `src/foo`" should NOT suppress a finding about `src/foo`.
+_IMPERATIVE_NEG_RE = re.compile(
+    r"\b(must not|should not|do not|don't|cannot|can't)\b",
+    re.IGNORECASE,
 )
 
 
-def _is_negated(text: str, match_start: int) -> bool:
-    """True if the match is in a context that explicitly denies the path exists.
+def _find_sentence(text: str, pos: int) -> tuple[str, int]:
+    """Return (sentence_text, sentence_start) for the sentence containing pos."""
+    sent_start = 0
+    for m in _SENTENCE_SEP_RE.finditer(text):
+        if m.end() <= pos:
+            sent_start = m.end()
+        else:
+            break
+    after = _SENTENCE_SEP_RE.search(text, pos)
+    sent_end = after.start() if after else len(text)
+    return text[sent_start:sent_end], sent_start
 
-    Heuristic: look at the 80 characters before the match and the opening of
-    the sentence it sits in. Catches phrases like "No `tests/unit/` tree exists"
-    and "`src/alfred/api/main.py` does not exist".
+
+def _claim_is_negated(text: str, match_span: tuple[int, int]) -> bool:
+    """True if the claim is explicitly denied to exist within its sentence.
+
+    Scopes negation to the containing sentence so that imperatives like
+    "must not break `src/foo`" do not suppress findings about `src/foo`.
+    Only post-claim existence-denial phrases ("does not exist", "is missing")
+    and unambiguous pre-claim markers ("no `path`", "removed", "deleted")
+    count as negation.
     """
-    window_start = max(0, match_start - 80)
-    window = (" " + text[window_start:match_start].lower()).replace("\n", " ")
-    if any(cue in window for cue in _NEGATION_CUES):
+    start, end = match_span
+    sentence, sent_start = _find_sentence(text, start)
+    sentence_lower = sentence.lower()
+
+    claim_start_in_sent = start - sent_start
+    claim_end_in_sent = end - sent_start
+
+    post_claim = sentence_lower[claim_end_in_sent:]
+    pre_claim = sentence_lower[:claim_start_in_sent]
+
+    # Post-claim existence denial: "`src/foo` does not exist"
+    if any(denial in post_claim for denial in _EXISTENCE_DENIAL_POST):
         return True
-    # Also look 60 chars after, catching "... does not exist" trailing the path.
-    tail_end = min(len(text), match_start + 200)
-    tail = text[match_start:tail_end].lower().replace("\n", " ")
-    if any(cue in tail[:120] for cue in ("does not exist", "is not present", "is missing", "not yet exist")):
+
+    # Sentence contains only an imperative negation — no existence denial implied
+    if _IMPERATIVE_NEG_RE.search(sentence):
+        return False
+
+    # Non-imperative pre-claim markers: "no `path`", "no such path", etc.
+    if re.search(r"\bno\s*$|\bno such\b|\bremoved\b|\bdeleted\b|\babsent\b", pre_claim):
         return True
+
     return False
 
 
-def _check_path_existence(text: str, repo_root: Path) -> list[str]:
-    errors: list[str] = []
+def _check_path_existence(text: str, repo_root: Path) -> list[Finding]:
+    findings: list[Finding] = []
     seen: set[str] = set()
     for match in _PATH_RE.finditer(text):
         raw = match.group("path")
@@ -175,17 +253,47 @@ def _check_path_existence(text: str, repo_root: Path) -> list[str]:
         full = repo_root / normalised
         if full.exists():
             continue
-        if _is_negated(text, match.start()):
+        if _claim_is_negated(text, (match.start(), match.end())):
             continue
-        errors.append(
-            f"Reference to `{candidate}` in a current-state section, but "
-            f"{normalised!r} does not exist in the repo."
-        )
-    return errors
+        findings.append(Finding(
+            category=ClaimCategory.CURRENT_PATH,
+            severity="error",
+            message=f"{normalised!r} does not exist in the repo.",
+            evidence=f"`{candidate}`",
+            section="current_state",
+        ))
+    return findings
 
 
-def _check_api_topology(text: str, repo_root: Path) -> list[str]:
-    errors: list[str] = []
+_DOCS_MD_RE = re.compile(r"`(?P<path>docs/[A-Za-z0-9_./\-]+\.md)`")
+
+
+def _check_reference_documents(text: str, repo_root: Path) -> list[Finding]:
+    """Flag backtick-quoted docs/*.md paths not in the canonical docs inventory."""
+    findings: list[Finding] = []
+    inventory = set(read_reference_documents(repo_root))
+    seen: set[str] = set()
+    for match in _DOCS_MD_RE.finditer(text):
+        path = match.group("path")
+        if path in seen:
+            continue
+        seen.add(path)
+        if path in inventory:
+            continue
+        if _claim_is_negated(text, (match.start(), match.end())):
+            continue
+        findings.append(Finding(
+            category=ClaimCategory.REFERENCE_DOC,
+            severity="error",
+            message="not in the canonical docs inventory.",
+            evidence=f"`{path}`",
+            section="current_state",
+        ))
+    return findings
+
+
+def _check_api_topology(text: str, repo_root: Path) -> list[Finding]:
+    findings: list[Finding] = []
     api = read_api_surface(repo_root)
     real_path = api["module_path"]
     real_endpoints = api["endpoints"]
@@ -194,17 +302,25 @@ def _check_api_topology(text: str, repo_root: Path) -> list[str]:
     # Reject directory-style claims about the API module.
     bad_api_dir = re.search(r"`src/alfred/api/(?:[A-Za-z0-9_.]+)?`", text)
     if bad_api_dir:
-        errors.append(
-            f"Claim mentions `{bad_api_dir.group(0)}` but the real FastAPI app "
-            f"lives in `{real_path}` (single file)."
-        )
+        findings.append(Finding(
+            category=ClaimCategory.CURRENT_TOPOLOGY,
+            severity="error",
+            message=(
+                f"the real FastAPI app lives in `{real_path}` (single file)."
+            ),
+            evidence=bad_api_dir.group(0),
+            section="current_state",
+        ))
 
     # Reject explicit `src/alfred/api/main.py` references in current-state text.
     if "src/alfred/api/main.py" in text:
-        errors.append(
-            "Reference to `src/alfred/api/main.py` in a current-state section, "
-            f"but the FastAPI entrypoint is `{real_path}`."
-        )
+        findings.append(Finding(
+            category=ClaimCategory.CURRENT_TOPOLOGY,
+            severity="error",
+            message=f"the FastAPI entrypoint is `{real_path}`.",
+            evidence="`src/alfred/api/main.py`",
+            section="current_state",
+        ))
 
     # Endpoint count claim: phrases like "five endpoints", "5 endpoints".
     _NUM_WORDS = {
@@ -220,13 +336,19 @@ def _check_api_topology(text: str, repo_root: Path) -> list[str]:
         raw = m.group("count").lower()
         claimed = int(raw) if raw.isdigit() else _NUM_WORDS[raw]
         if claimed != len(real_endpoints):
-            errors.append(
-                f"Claim of {claimed} endpoints does not match the real FastAPI "
-                f"surface ({len(real_endpoints)} endpoints in {real_path})."
-            )
+            findings.append(Finding(
+                category=ClaimCategory.CURRENT_TOPOLOGY,
+                severity="error",
+                message=(
+                    f"does not match the real FastAPI surface "
+                    f"({len(real_endpoints)} endpoints in {real_path})."
+                ),
+                evidence=f"{claimed} endpoints",
+                section="current_state",
+            ))
             break  # one mismatch is enough; don't double-count
 
-    return errors
+    return findings
 
 
 # Known-bad agent names: modules that do not exist under src/alfred/agents/.
@@ -236,8 +358,8 @@ def _check_api_topology(text: str, repo_root: Path) -> list[str]:
 _KNOWN_BAD_AGENT_NAMES = ("executor", "reviewer", "summariser", "summarizer")
 
 
-def _check_agent_roster(text: str, repo_root: Path) -> list[str]:
-    errors: list[str] = []
+def _check_agent_roster(text: str, repo_root: Path) -> list[Finding]:
+    findings: list[Finding] = []
     real_agents = read_agent_modules(repo_root)
     for bad in _KNOWN_BAD_AGENT_NAMES:
         patterns = (
@@ -256,11 +378,16 @@ def _check_agent_roster(text: str, repo_root: Path) -> list[str]:
             re.IGNORECASE,
         )
         if bad == "executor" and roster_re.search(text):
-            errors.append(
-                "Current-state section enumerates `planner, executor, reviewer` "
-                f"as the agent roster, but the real roster under "
-                f"src/alfred/agents/ is: {', '.join(real_agents)}."
-            )
+            findings.append(Finding(
+                category=ClaimCategory.CURRENT_TOPOLOGY,
+                severity="error",
+                message=(
+                    f"the real roster under src/alfred/agents/ is: "
+                    f"{', '.join(real_agents)}."
+                ),
+                evidence="planner, executor, reviewer",
+                section="current_state",
+            ))
             continue
         found = False
         for p in patterns:
@@ -268,16 +395,21 @@ def _check_agent_roster(text: str, repo_root: Path) -> list[str]:
                 found = True
                 break
         if found:
-            errors.append(
-                f"Current-state section references `{bad}` as an agent module, "
-                f"but the real agent roster under src/alfred/agents/ is: "
-                f"{', '.join(real_agents)}."
-            )
-    return errors
+            findings.append(Finding(
+                category=ClaimCategory.CURRENT_TOPOLOGY,
+                severity="error",
+                message=(
+                    f"the real agent roster under src/alfred/agents/ is: "
+                    f"{', '.join(real_agents)}."
+                ),
+                evidence=f"`{bad}`",
+                section="current_state",
+            ))
+    return findings
 
 
-def _check_top_level_packages(text: str, repo_root: Path) -> list[str]:
-    errors: list[str] = []
+def _check_top_level_packages(text: str, repo_root: Path) -> list[Finding]:
+    findings: list[Finding] = []
     real_top = set(read_top_level_packages(repo_root))
     # Directory-style references to subpackages of src/alfred/.
     sub_re = re.compile(r"`src/alfred/(?P<name>[a-z_][a-z0-9_]*)/`", re.IGNORECASE)
@@ -288,16 +420,23 @@ def _check_top_level_packages(text: str, repo_root: Path) -> list[str]:
             continue
         seen.add(name)
         if name not in real_top:
-            errors.append(
-                f"Reference to `src/alfred/{name}/` as an existing package, "
-                f"but it is not present. Real top-level names: "
-                f"{', '.join(sorted(real_top))}."
-            )
-    return errors
+            if _claim_is_negated(text, (m.start(), m.end())):
+                continue
+            findings.append(Finding(
+                category=ClaimCategory.CURRENT_PATH,
+                severity="error",
+                message=(
+                    f"not present. Real top-level names: "
+                    f"{', '.join(sorted(real_top))}."
+                ),
+                evidence=f"`src/alfred/{name}/`",
+                section="current_state",
+            ))
+    return findings
 
 
-def _check_type_checker(text: str) -> list[str]:
-    errors: list[str] = []
+def _check_type_checker(text: str) -> list[Finding]:
+    findings: list[Finding] = []
     # "mypy" mentioned as part of current-state tooling is wrong.
     # Allow mention in contexts that explicitly negate it ("mypy is not used").
     for m in re.finditer(r"\bmypy\b", text, re.IGNORECASE):
@@ -306,19 +445,22 @@ def _check_type_checker(text: str) -> list[str]:
         window = text[window_start:window_end].lower()
         if "not " in window or "never " in window or "is not" in window:
             continue
-        errors.append(
-            "Current-state section references `mypy`, but the repo uses "
-            "`pyright`. Phase 6 explicitly forbids adding `mypy`."
-        )
+        findings.append(Finding(
+            category=ClaimCategory.CURRENT_TOOLING,
+            severity="error",
+            message="the repo uses `pyright`. Phase 6 explicitly forbids adding `mypy`.",
+            evidence="`mypy`",
+            section="current_state",
+        ))
         break
-    return errors
+    return findings
 
 
-def _check_pyproject_state(text: str, repo_root: Path) -> list[str]:
-    errors: list[str] = []
+def _check_pyproject_state(text: str, repo_root: Path) -> list[Finding]:
+    findings: list[Finding] = []
     state = read_packaging_state(repo_root)
     if not state["pyproject_exists"]:
-        return errors
+        return findings
     # Phrases that claim pyproject.toml is missing or must be created.
     bad_phrases = (
         "pyproject.toml does not exist",
@@ -330,13 +472,80 @@ def _check_pyproject_state(text: str, repo_root: Path) -> list[str]:
     lowered = text.lower()
     for phrase in bad_phrases:
         if phrase in lowered:
-            errors.append(
-                f"Claim '{phrase}' but `pyproject.toml` is present with "
-                f"[project]={state['has_project_table']} and "
-                f"[project.scripts]={state['has_project_scripts']}."
-            )
+            findings.append(Finding(
+                category=ClaimCategory.PYPROJECT_STATE,
+                severity="error",
+                message=(
+                    f"`pyproject.toml` is present with "
+                    f"[project]={state['has_project_table']} and "
+                    f"[project.scripts]={state['has_project_scripts']}."
+                ),
+                evidence=phrase,
+                section="current_state",
+            ))
             break
-    return errors
+    return findings
+
+
+def _check_partial_state(text: str, repo_root: Path) -> list[Finding]:
+    """Flag claims that misrepresent declared-but-unimplemented state.
+
+    When the CLI entry is declared in pyproject.toml but src/alfred/cli.py is
+    absent, a draft must not claim either "the CLI is implemented" or "there is
+    no CLI at all". The correct vocabulary is "declared but unimplemented".
+    """
+    findings: list[Finding] = []
+    pkg = read_packaging_state(repo_root)
+    partial = read_partial_state_facts(repo_root)
+    lower = text.lower()
+
+    if "cli_module" in partial and not pkg.get("cli_module_exists"):
+        # CLI declared but absent — flag over-confident claims in either direction
+        implemented_phrases = (
+            "cli is implemented",
+            "cli exists",
+            "cli is present",
+            "cli is available",
+            "alfred cli is implemented",
+            "the cli is implemented",
+        )
+        absent_phrases = (
+            "no cli",
+            "cli does not exist",
+            "cli is missing",
+            "cli is absent",
+            "no alfred cli",
+            "there is no cli",
+        )
+        for phrase in implemented_phrases:
+            if phrase in lower:
+                findings.append(Finding(
+                    category=ClaimCategory.PARTIAL_STATE,
+                    severity="error",
+                    message=(
+                        "CLI script entry is declared in pyproject.toml "
+                        "but src/alfred/cli.py does not yet exist. "
+                        "Use 'declared but unimplemented'."
+                    ),
+                    evidence=phrase,
+                    section="current_state",
+                ))
+                break
+        for phrase in absent_phrases:
+            if phrase in lower:
+                findings.append(Finding(
+                    category=ClaimCategory.PARTIAL_STATE,
+                    severity="error",
+                    message=(
+                        "CLI script entry is declared in pyproject.toml. "
+                        "Use 'declared but unimplemented', not an absence claim."
+                    ),
+                    evidence=phrase,
+                    section="current_state",
+                ))
+                break
+
+    return findings
 
 
 # ---------------------------------------------------------------------------
@@ -375,8 +584,8 @@ def _check_metadata(
     expected_id: Optional[str],
     expected_previous: Optional[str],
     expected_date: Optional[str],
-) -> list[str]:
-    errors: list[str] = []
+) -> list[Finding]:
+    findings: list[Finding] = []
     declared_id = _extract_metadata_id(context)
     declared_date = _extract_metadata_date(context)
     declared_prev = _extract_metadata_previous(context)
@@ -387,36 +596,78 @@ def _check_metadata(
         # filename stem plus `_DRAFT` (both are legitimate for a draft).
         legit = {filename_id, filename_id + "_DRAFT"}
         if declared_id not in legit:
-            errors.append(
-                f"Metadata id `{declared_id}` does not match the filename "
-                f"`{source_path.name}` (expected `{filename_id}` or "
-                f"`{filename_id}_DRAFT`)."
-            )
+            findings.append(Finding(
+                category=ClaimCategory.METADATA,
+                severity="error",
+                message=(
+                    f"does not match the filename `{source_path.name}` "
+                    f"(expected `{filename_id}` or `{filename_id}_DRAFT`)."
+                ),
+                evidence=f"id: {declared_id}",
+                section="metadata",
+            ))
 
     if expected_id and declared_id and declared_id not in {expected_id, expected_id + "_DRAFT"}:
-        errors.append(
-            f"Metadata id `{declared_id}` does not match expected id "
-            f"`{expected_id}` supplied to the validator."
-        )
+        findings.append(Finding(
+            category=ClaimCategory.METADATA,
+            severity="error",
+            message=f"does not match expected id `{expected_id}` supplied to the validator.",
+            evidence=f"id: {declared_id}",
+            section="metadata",
+        ))
 
     if expected_previous and declared_prev and declared_prev != expected_previous:
-        errors.append(
-            f"Metadata previous_handover `{declared_prev}` does not match "
-            f"expected `{expected_previous}` supplied to the validator."
-        )
+        findings.append(Finding(
+            category=ClaimCategory.METADATA,
+            severity="error",
+            message=f"does not match expected `{expected_previous}` supplied to the validator.",
+            evidence=f"previous_handover: {declared_prev}",
+            section="metadata",
+        ))
 
     if expected_date and declared_date and declared_date != expected_date:
-        errors.append(
-            f"Metadata date `{declared_date}` does not match expected "
-            f"`{expected_date}` supplied to the validator."
-        )
+        findings.append(Finding(
+            category=ClaimCategory.METADATA,
+            severity="error",
+            message=f"does not match expected `{expected_date}` supplied to the validator.",
+            evidence=f"date: {declared_date}",
+            section="metadata",
+        ))
 
-    return errors
+    return findings
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+def validate_current_state_facts(
+    markdown: str,
+    source_path: Optional[Path] = None,
+    *,
+    expected_id: Optional[str] = None,
+    expected_previous: Optional[str] = None,
+    expected_date: Optional[str] = None,
+    repo_root: Optional[Path] = None,
+) -> list[Finding]:
+    """Return typed findings for current-state factual claims. Empty list = grounded."""
+    root = repo_root or Path(__file__).resolve().parents[1]
+    sections = extract_sections(markdown)
+    current = current_state_text(sections)
+    ctx = context_block(sections)
+
+    findings: list[Finding] = []
+    findings.extend(_check_metadata(ctx, source_path, expected_id, expected_previous, expected_date))
+    findings.extend(_check_path_existence(current, root))
+    findings.extend(_check_reference_documents(current, root))
+    findings.extend(_check_api_topology(current, root))
+    findings.extend(_check_agent_roster(current, root))
+    findings.extend(_check_top_level_packages(current, root))
+    findings.extend(_check_type_checker(current))
+    findings.extend(_check_pyproject_state(current, root))
+    findings.extend(_check_partial_state(current, root))
+    return findings
 
 
 def validate(
@@ -428,21 +679,19 @@ def validate(
     expected_date: Optional[str] = None,
     repo_root: Optional[Path] = None,
 ) -> list[str]:
-    """Return a list of factual errors. Empty list means the draft is grounded."""
-    root = repo_root or Path(__file__).resolve().parents[1]
-    sections = extract_sections(markdown)
-    current = current_state_text(sections)
-    ctx = context_block(sections)
+    """Return a list of factual errors. Empty list means the draft is grounded.
 
-    errors: list[str] = []
-    errors.extend(_check_metadata(ctx, source_path, expected_id, expected_previous, expected_date))
-    errors.extend(_check_path_existence(current, root))
-    errors.extend(_check_api_topology(current, root))
-    errors.extend(_check_agent_roster(current, root))
-    errors.extend(_check_top_level_packages(current, root))
-    errors.extend(_check_type_checker(current))
-    errors.extend(_check_pyproject_state(current, root))
-    return errors
+    Backwards-compatible shim over ``validate_current_state_facts``.
+    """
+    findings = validate_current_state_facts(
+        markdown,
+        source_path,
+        expected_id=expected_id,
+        expected_previous=expected_previous,
+        expected_date=expected_date,
+        repo_root=repo_root,
+    )
+    return [f.format() for f in findings]
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -464,17 +713,28 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"error: could not read {args.path}: {exc}", file=sys.stderr)
         return 2
 
-    errors = validate(
+    findings = validate_current_state_facts(
         markdown,
         source_path=args.path,
         expected_id=args.expected_id,
         expected_previous=args.expected_previous,
         expected_date=args.expected_date,
     )
+
+    errors = [f for f in findings if f.severity == "error"]
+    warnings = [f for f in findings if f.severity == "warning"]
+
     if errors:
         print(f"FAIL {args.path}", file=sys.stderr)
-        for err in errors:
-            print(f"  - {err}", file=sys.stderr)
+        print("ERRORS:", file=sys.stderr)
+        for f in errors:
+            print(f"  - {f.format()}", file=sys.stderr)
+    if warnings:
+        print("WARNINGS:", file=sys.stderr)
+        for f in warnings:
+            print(f"  - {f.format()}", file=sys.stderr)
+
+    if errors:
         return 1
     print(f"OK   {args.path}")
     return 0

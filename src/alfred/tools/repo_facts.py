@@ -114,9 +114,10 @@ def read_packaging_state(repo_root: Optional[Path] = None) -> dict[str, object]:
         }
     text = pyproject.read_text(encoding="utf-8")
     cli_entry: Optional[str] = None
-    m = re.search(r'^alfred\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    m = re.search(r"""^alfred\s*=\s*["']([^"']+)["']""", text, re.MULTILINE)
     if m:
         cli_entry = m.group(1)
+    cli_module_exists = (root / "src" / "alfred" / "cli.py").is_file()
     return {
         "pyproject_exists": True,
         "has_project_table": "[project]" in text,
@@ -124,6 +125,7 @@ def read_packaging_state(repo_root: Optional[Path] = None) -> dict[str, object]:
         "uses_pyright": "pyright" in text,
         "uses_mypy": re.search(r"\bmypy\b", text) is not None,
         "cli_script_entry": cli_entry,
+        "cli_module_exists": cli_module_exists,
     }
 
 
@@ -138,6 +140,37 @@ def read_reference_documents(repo_root: Optional[Path] = None) -> list[str]:
         if p.is_file() and p.suffix == ".md":
             names.append(f"docs/{p.name}")
     return names
+
+
+def read_partial_state_facts(repo_root: Optional[Path] = None) -> dict[str, str]:
+    """Return labeled facts about items declared but not yet implemented.
+
+    Each value is a human-readable description suitable for injection into
+    a planner prompt. Keys are stable identifiers; values change as the repo
+    evolves.
+    """
+    root = repo_root or _REPO_ROOT
+    pkg = read_packaging_state(root)
+    facts: dict[str, str] = {}
+
+    if pkg["cli_script_entry"] and not pkg["cli_module_exists"]:
+        facts["cli_module"] = (
+            f"CLI script entry declared ({pkg['cli_script_entry']}) "
+            f"but src/alfred/cli.py is absent"
+        )
+    elif pkg["cli_script_entry"] and pkg["cli_module_exists"]:
+        facts["cli_module"] = (
+            f"CLI script entry declared ({pkg['cli_script_entry']}) "
+            f"and src/alfred/cli.py exists"
+        )
+
+    release_workflow = root / ".github" / "workflows" / "release.yml"
+    if not release_workflow.exists():
+        facts["release_workflow"] = (
+            ".github/workflows/release.yml is not yet present"
+        )
+
+    return facts
 
 
 def build_repo_facts_summary(repo_root: Optional[Path] = None) -> list[str]:
@@ -182,4 +215,7 @@ def build_repo_facts_summary(repo_root: Optional[Path] = None) -> list[str]:
         f"Type checker: {'pyright' if pkg['uses_pyright'] else 'none'}"
         + (" (mypy IS NOT in use)" if not pkg["uses_mypy"] else " (mypy present)")
     )
+    partial = read_partial_state_facts(root)
+    for fact in partial.values():
+        lines.append(f"Partial state: {fact}")
     return lines
