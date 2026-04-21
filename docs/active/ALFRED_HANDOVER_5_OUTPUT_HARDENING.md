@@ -9,11 +9,11 @@
 **date:** 2026-04-20
 **author:** Codex (repo-grounded remediation plan)
 **previous_handover:** ALFRED_HANDOVER_5
-**baseline_state:** Phase 6 is closed at commit `6f68a3d` (`phase6: close — post-mortem and checkpoint-6-2 evidence`). `scripts/generate_phase7.py` was added at `d088630` and produced `docs/ALFRED_HANDOVER_6_DRAFT.md`. That draft passes the existing structural validator, but it is not promotion-safe because several `WHAT EXISTS TODAY` claims are factually wrong. Current head `86efac9` only adjusts planner token budget; the factual-grounding gap remains open. Executor cold-starts from this file to remediate the generation pipeline before any Phase 7 planning artifact is promoted.
+**baseline_state:** Phase 6 is closed at commit `6f68a3d` (`phase6: close — post-mortem and checkpoint-6-2 evidence`). `scripts/generate_phase7.py` was added at `d088630` and produced `docs/archive/ALFRED_HANDOVER_6_DRAFT.md`. That draft passes the existing structural validator, but it is not promotion-safe because several `WHAT EXISTS TODAY` claims are factually wrong. Current head `86efac9` only adjusts planner token budget; the factual-grounding gap remains open. Executor cold-starts from this file to remediate the generation pipeline before any Phase 7 planning artifact is promoted.
 
 **Reference Documents:**
-- `docs/ALFRED_HANDOVER_5.md` — authoritative Phase 6 handover and close criteria
-- `docs/ALFRED_HANDOVER_6_DRAFT.md` — current generated Phase 7 draft containing factual errors
+- `docs/canonical/ALFRED_HANDOVER_5.md` — authoritative Phase 6 handover and close criteria
+- `docs/archive/ALFRED_HANDOVER_6_DRAFT.md` — current generated Phase 7 draft containing factual errors
 - `scripts/generate_phase7.py` — current local generation path for the Phase 7 draft
 - `scripts/validate_alfred_handover.py` — current structural validator (headings only)
 - `src/alfred/agents/planner.py` — current planner prompt builder
@@ -49,8 +49,8 @@ c7ae43a  output-hardening: task 4 — add canonical state and git-history suppor
 - `configs/alfred_handover_template.md` is already injected into planner generation.
 - `PlannerInput.canonical_template` and `PlannerInput.git_history_summary` already exist.
 - `scripts/validate_alfred_handover.py` already enforces Alfred structural sections and `### Git History` placement.
-- `docs/ALFRED_HANDOVER_6_DRAFT.md` is structurally valid under the current validator.
-- Phase 6 quality infrastructure exists in-repo: property tests, eval harness, coverage gates, CI workflow, README updates, and `docs/architecture.md` Section 8.
+- `docs/archive/ALFRED_HANDOVER_6_DRAFT.md` is structurally valid under the current validator.
+- Phase 6 quality infrastructure exists in-repo: property tests, eval harness, coverage gates, CI workflow, README updates, and `docs/protocol/architecture.md` Section 8.
 
 ### Real Current Runtime Shape
 
@@ -82,9 +82,9 @@ c7ae43a  output-hardening: task 4 — add canonical state and git-history suppor
 
 ### Concrete Defects In The Current Phase 7 Draft
 
-| ID | Defect in `docs/ALFRED_HANDOVER_6_DRAFT.md` | Why it is wrong | Code remediation required |
+| ID | Defect in `docs/archive/ALFRED_HANDOVER_6_DRAFT.md` | Why it is wrong | Code remediation required |
 |---|---|---|---|
-| R1 | References nonexistent `docs/handover_6.md` | That file does not exist; canonical close-out doc is Phase 6 material already in repo | Ground planner with authoritative reference-document paths and validate local path claims |
+| R1 | References nonexistent `handover_6.md` | That file does not exist; canonical close-out doc is Phase 6 material already in repo | Ground planner with authoritative reference-document paths and validate local path claims |
 | R2 | Claims API lives in `src/alfred/api/` with five endpoints | Runtime is a single file `src/alfred/api.py` with nine endpoints | Inject API surface facts into planner input and add factual validation |
 | R3 | Claims agent roster is planner/executor/reviewer/summariser | Those modules do not exist; real roles are planner/story_generator/quality_judge/retro_analyst plus compiler | Inject agent-roster facts and validate current-state role claims |
 | R4 | Claims `src/alfred/rag/` and `src/alfred/state/` exist | Those packages do not exist; RAG and persistence live under `src/alfred/tools/` | Inject repo topology facts and reject nonexistent module claims |
@@ -134,7 +134,7 @@ c7ae43a  output-hardening: task 4 — add canonical state and git-history suppor
 - Hardened planner prompt instructions forbidding invented current-state claims
 - A factual validator for Alfred planning drafts, separate from the existing structural validator
 - Regression tests covering hallucinated local paths, wrong agent rosters, wrong API/module claims, wrong tooling claims, and metadata mismatch
-- A regenerated `docs/ALFRED_HANDOVER_6_DRAFT.md` that passes both structural and factual validation
+- A regenerated `docs/archive/ALFRED_HANDOVER_6_DRAFT.md` that passes both structural and factually validation
 
 Out of scope:
 - Implementing Phase 7 deployment work itself
@@ -154,7 +154,7 @@ Out of scope:
 | 3 | Factual Validation Gate | `scripts/validate_alfred_planning_facts.py` plus fixtures/tests | CHECKPOINT-OH-2 |
 | 4 | Generation Metadata Consistency | corrected `generate_phase7.py` identity/date/path handling | |
 | 5 | Regression Coverage | tests covering all R1-R11 failure modes | |
-| 6 | Regenerate Phase 7 Draft | corrected `docs/ALFRED_HANDOVER_6_DRAFT.md` and evidence outputs | CHECKPOINT-OH-3 |
+| 6 | Regenerate Phase 7 Draft | corrected `docs/archive/ALFRED_HANDOVER_6_DRAFT.md` and evidence outputs | CHECKPOINT-OH-3 |
 
 ---
 
@@ -306,8 +306,8 @@ pytest tests/test_api.py -k "generate and (canonical or git_history or response_
 ### Verification
 
 ```bash
-python scripts/validate_alfred_handover.py docs/ALFRED_HANDOVER_6_DRAFT.md
-python scripts/validate_alfred_planning_facts.py docs/ALFRED_HANDOVER_6_DRAFT.md
+python scripts/validate_alfred_handover.py docs/archive/ALFRED_HANDOVER_6_DRAFT.md
+python scripts/validate_alfred_planning_facts.py docs/archive/ALFRED_HANDOVER_6_DRAFT.md
 pytest tests/test_scripts/test_validate_alfred_planning_facts.py -v
 ```
 
@@ -355,7 +355,7 @@ pytest tests/test_scripts/test_validate_alfred_planning_facts.py -v
    - Ensure the same values are preserved when `_run_critique_loop(...)` performs revisions.
 
 3. **Keep file naming and document metadata aligned.**
-   - `docs/ALFRED_HANDOVER_6_DRAFT.md` should produce a draft whose metadata is for handover 6, not 7.
+   - `docs/archive/ALFRED_HANDOVER_6_DRAFT.md` should produce a draft whose metadata is for handover 6, not 7.
    - The metadata date must be injected from runtime, not left to model recall.
 
 4. **Add a small helper test surface if needed.**
@@ -432,7 +432,7 @@ pytest tests/test_scripts/test_generate_phase7.py -v
 
 ## TASK 6 — Regenerate Phase 7 Draft
 
-**Goal:** Re-run the generator after Tasks 1-5 and produce a corrected `docs/ALFRED_HANDOVER_6_DRAFT.md` that is both structurally and factually grounded.
+**Goal:** Re-run the generator after Tasks 1-5 and produce a corrected `docs/archive/ALFRED_HANDOVER_6_DRAFT.md` that is both structurally and factually grounded.
 
 ### Implementation
 
@@ -463,9 +463,9 @@ pytest tests/test_scripts/test_generate_phase7.py -v
 
 ```bash
 python scripts/generate_phase7.py
-python scripts/validate_alfred_handover.py docs/ALFRED_HANDOVER_6_DRAFT.md
-python scripts/validate_alfred_planning_facts.py docs/ALFRED_HANDOVER_6_DRAFT.md
-git diff -- docs/ALFRED_HANDOVER_6_DRAFT.md
+python scripts/validate_alfred_handover.py docs/archive/ALFRED_HANDOVER_6_DRAFT.md
+python scripts/validate_alfred_planning_facts.py docs/archive/ALFRED_HANDOVER_6_DRAFT.md
+git diff -- docs/archive/ALFRED_HANDOVER_6_DRAFT.md
 ```
 
 **Expected:**
@@ -496,7 +496,7 @@ git diff -- docs/ALFRED_HANDOVER_6_DRAFT.md
 
 ## WHAT NOT TO DO
 
-1. **Do not promote the current `docs/ALFRED_HANDOVER_6_DRAFT.md` as-is.**
+1. **Do not promote the current `docs/archive/ALFRED_HANDOVER_6_DRAFT.md` as-is.**
 2. **Do not treat structural validity as factual validity.**
 3. **Do not patch the next draft by hand and call the pipeline fixed.**
 4. **Do not add `mypy`, `src/alfred/api/main.py`, `src/alfred/rag/`, or `src/alfred/state/` just because the bad draft mentioned them.**

@@ -5,16 +5,16 @@
 ## CONTEXT — READ THIS FIRST
 
 **schema_version:** 1.0
-**id:** ALFREAD_HANDOVER_4_OUTPUT_HARDENING
+**id:** ALFRED_HANDOVER_4_OUTPUT_HARDENING
 **date:** 2026-04-20
 **author:** Codex (diagnostic write-up for Donal)
 **previous_handover:** ALFRED_HANDOVER_4
-**baseline_state:** Phase 5 is complete. `docs/ALFRED_HANDOVER_5_DRAFT.md` exists and is substantively close to promotion, but the framework that generated it does not structurally enforce Alfred canonical output shape. The concrete miss that exposed this gap is the omission of `### Git History` under `## WHAT EXISTS TODAY`, even though the Alfred handover corpus treats that section as part of house style. The current codebase can generate, critique, compile, and execute handovers, but promotion to canonical Alfred protocol still relies too heavily on prompt quality and human catch-rate instead of hard output contracts.
+**baseline_state:** Phase 5 is complete. `docs/archive/ALFRED_HANDOVER_5_DRAFT.md` exists and is substantively close to promotion, but the framework that generated it does not structurally enforce Alfred canonical output shape. The concrete miss that exposed this gap is the omission of `### Git History` under `## WHAT EXISTS TODAY`, even though the Alfred handover corpus treats that section as part of house style. The current codebase can generate, critique, compile, and execute handovers, but promotion to canonical Alfred protocol still relies too heavily on prompt quality and human catch-rate instead of hard output contracts.
 
 **Reference Documents:**
-- `~/code/projectalfred/docs/ALFRED_HANDOVER_4.md` — authoritative Phase 5 handover and post-mortem
-- `~/code/projectalfred/docs/ALFRED_HANDOVER_4_BUG_SCRUB.md` — explicit error register for the Phase 6 draft scrub
-- `~/code/projectalfred/docs/ALFRED_HANDOVER_5_DRAFT.md` — generated Phase 6 draft that exposed the output-hardening gap
+- `docs/canonical/ALFRED_HANDOVER_4.md` — authoritative Phase 5 handover and post-mortem
+- `docs/archive/ALFRED_HANDOVER_4_BUG_SCRUB.md` — explicit error register for the Phase 6 draft scrub
+- `docs/archive/ALFRED_HANDOVER_5_DRAFT.md` — generated Phase 6 draft that exposed the output-hardening gap
 - `~/code/projectalfred/configs/handover_template.md` — current canonical template, which does not encode Alfred house sections like `WHAT EXISTS TODAY` / `Git History`
 - `~/code/projectalfred/src/alfred/agents/planner.py` — current planner prompt builder
 - `~/code/projectalfred/src/alfred/schemas/handover.py` — current render/parse contract for handover documents
@@ -37,7 +37,7 @@ fd724e1  phase5: task 6 — dogfood #2
 
 - `POST /generate` calls `run_planner(...)`, then `_run_critique_loop(...)`, and returns markdown only.
 - `POST /compile` is separate and turns approved markdown into a structured `HandoverDocument`.
-- `scripts/generate_phase6.py` reproduces the same planner + critique path locally and writes `docs/ALFRED_HANDOVER_5_DRAFT.md`.
+- `scripts/generate_phase6.py` reproduces the same planner + critique path locally and writes `docs/archive/ALFRED_HANDOVER_5_DRAFT.md`.
 - The current planner prompt asks for good handover content, but does not require Alfred house-style sections like `### Git History`.
 
 ### Current Structural Gap
@@ -139,7 +139,7 @@ Out of scope:
 ### Verification
 
 ```bash
-python scripts/validate_alfred_handover.py docs/ALFRED_HANDOVER_5_DRAFT.md
+python scripts/validate_alfred_handover.py docs/archive/ALFRED_HANDOVER_5_DRAFT.md
 pytest tests/test_schemas/test_handover_output_profile.py -v
 ```
 
@@ -310,15 +310,15 @@ pytest tests/test_schemas/test_handover.py -v
    - Draft generation
    - Human review
    - Canonical-output validation
-   - Promotion/copy to `docs/ALFRED_HANDOVER_N.md`
+   - Promotion/copy to the canonical Phase-N handover under `docs/canonical/`
 
 4. **Verify Phase 6 draft readiness with the new tooling.**
-   - `docs/ALFRED_HANDOVER_5_DRAFT.md` should only be promoted after it passes the new validator and any final editorial adjustments.
+   - `docs/archive/ALFRED_HANDOVER_5_DRAFT.md` should only be promoted after it passes the new validator and any final editorial adjustments.
 
 ### Verification
 
 ```bash
-python scripts/validate_alfred_handover.py docs/ALFRED_HANDOVER_5_DRAFT.md
+python scripts/validate_alfred_handover.py docs/archive/ALFRED_HANDOVER_5_DRAFT.md
 pytest tests/test_schemas/test_handover_output_profile.py tests/test_agents/test_planner.py tests/test_api.py -v
 ```
 
@@ -374,11 +374,11 @@ pytest tests/test_schemas/test_handover_output_profile.py tests/test_agents/test
 - Artifact gap on Task 2 closure: the scaffold wiring was complete, but `ALFRED_HANDOVER_5_DRAFT.md` had been generated before the task was finished and still lacked `### Git History`. Required an explicit repair step after an architect review flagged the miss. This confirmed the value of the validator — a human review caught what the tooling would not have caught without it.
 
 **Decisions made during execution (deviations from this plan):**
-- Task 2 closure (Donal approved): inserted real git history into `docs/ALFRED_HANDOVER_5_DRAFT.md` as a post-hoc repair after architect review. The task plan called for wiring the scaffold; the artifact repair was an unplanned extra step needed to make the deliverable actually pass the validator.
+- Task 2 closure (Donal approved): inserted real git history into `docs/archive/ALFRED_HANDOVER_5_DRAFT.md` as a post-hoc repair after architect review. The task plan called for wiring the scaffold; the artifact repair was an unplanned extra step needed to make the deliverable actually pass the validator.
 - `configs/alfred_handover_template.md` naming (no approval needed — additive): the canonical template was placed at `configs/alfred_handover_template.md` to distinguish Alfred house-style from the generic `configs/handover_template.md`. No existing file was renamed.
 
 **Forward plan:**
-- `docs/ALFRED_HANDOVER_5.md` is the canonical Phase 6 planning artifact. Executor cold-starts from that document.
+- `docs/canonical/ALFRED_HANDOVER_5.md` is the canonical Phase 6 planning artifact. Executor cold-starts from that document.
 - Coverage thresholds (global 80%, `orchestrator.py` 90%, `planner.py` 85%) are Planner proposals — a human must confirm or override before Phase 6 Task 3 begins.
 - Eval pass threshold (default 1.0) — consider relaxing to 0.8 during Phase 6 while the fixture library is being authored (Phase 6 Open Question 2).
 - All five open questions in `ALFRED_HANDOVER_5.md` require human answers before the executor starts.

@@ -1,0 +1,207 @@
+manifest_version: 1
+generated_by: manual_bootstrap
+notes:
+  - "This manifest reflects the current docs corpus after the lifecycle-directory move."
+  - "current_path is the authoritative on-disk location used by policy-aware tooling."
+
+folders:
+  canonical:
+    path: docs/canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    description: Canonical handovers and protocol history.
+  protocol:
+    path: docs/protocol
+    indexed: true
+    citable: true
+    authoritative: true
+    description: Stable, long-lived architecture and process docs.
+  active:
+    path: docs/active
+    indexed: true
+    citable: true
+    authoritative: false
+    description: Temporary but relevant design briefs guiding active work.
+  archive:
+    path: docs/archive
+    indexed: false
+    citable: false
+    authoritative: false
+    description: Historical drafts, superseded docs, and retained background material.
+  scratch:
+    path: docs/scratch
+    indexed: false
+    citable: false
+    authoritative: false
+    description: Disposable local working files and captured outputs.
+
+documents:
+  - current_path: docs/canonical/ALFRED_HANDOVER_1.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Earliest canonical handover; keep retrievable for historical lineage.
+
+  - current_path: docs/canonical/ALFRED_HANDOVER_2.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover.
+
+  - current_path: docs/canonical/ALFRED_HANDOVER_3.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover.
+
+  - current_path: docs/canonical/ALFRED_HANDOVER_4.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover.
+
+  - current_path: docs/canonical/ALFRED_HANDOVER_5.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover.
+
+  - current_path: docs/canonical/ALFRED_HANDOVER_6.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Latest promoted canonical handover today.
+
+  - current_path: docs/protocol/architecture.md
+    kind: protocol_doc
+    lifecycle_status: protocol
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Stable architecture and methodology reference.
+
+  - current_path: docs/protocol/builder_prompt.md
+    kind: protocol_doc
+    lifecycle_status: protocol
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Foundational build brief; useful but not equal to live repo truth.
+
+  - current_path: docs/active/ALFRED_HANDOVER_4_OUTPUT_HARDENING.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Still relevant to canonical-output hardening; archive once no longer referenced.
+
+  - current_path: docs/active/ALFRED_HANDOVER_5_OUTPUT_HARDENING.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Still relevant while grounding remediation is active.
+
+  - current_path: docs/active/CODEX_HANDOVER_GROUNDING_REFINEMENT.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Current grounding-refinement execution brief.
+
+  - current_path: docs/active/FACTUAL_VALIDATOR_FUTURE_TASK_PLANNING_REALISM.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Supports current planning-realism and grounding work.
+
+  - current_path: docs/archive/ALFRED_HANDOVER_4_BUG_SCRUB.md
+    kind: supporting_history
+    lifecycle_status: archive
+    indexed: false
+    citable: false
+    authoritative: false
+    notes: Historical cleanup artifact, useful for traceability but not default generation.
+
+  - current_path: docs/archive/ALFRED_HANDOVER_5_DRAFT.md
+    kind: draft
+    lifecycle_status: archive
+    indexed: false
+    citable: false
+    authoritative: false
+    superseded_by: docs/canonical/ALFRED_HANDOVER_5.md
+    notes: Superseded by the promoted canonical handover.
+
+  - current_path: docs/archive/ALFRED_HANDOVER_6_DRAFT.md
+    kind: draft
+    lifecycle_status: archive
+    indexed: false
+    citable: false
+    authoritative: false
+    notes: Historical draft for Phase 7; should not be cited as canonical truth.
+
+  - current_path: docs/archive/ALFRED_HANDOVER_6_old.md
+    kind: archived_handover_snapshot
+    lifecycle_status: archive
+    indexed: false
+    citable: false
+    authoritative: false
+    notes: Archived previous Phase 7 handover snapshot retained for reference only.
+
+  - current_path: docs/archive/ALFRED_HANDOVER_6_FAILED_CANDIDATE.md
+    kind: failed_candidate
+    lifecycle_status: archive
+    indexed: false
+    citable: false
+    authoritative: false
+    notes: Validator-blocked candidate; preserve for debugging, exclude from default retrieval.
+
+  - current_path: docs/archive/coverage_baseline.md
+    kind: historical_metric_snapshot
+    lifecycle_status: archive
+    indexed: false
+    citable: false
+    authoritative: false
+    notes: Useful historical measurement, not a live protocol source.
+
+  - current_path: docs/archive/StigmergicSoftwareEngineeringBrainstorm.md
+    kind: brainstorm
+    lifecycle_status: archive
+    indexed: false
+    citable: false
+    authoritative: false
+    notes: Background ideation document; keep out of default generation flows.
+
+  - current_path: docs/archive/StigmergicSoftwareEngineeringBrainstorm.pdf
+    kind: brainstorm_asset
+    lifecycle_status: archive
+    indexed: false
+    citable: false
+    authoritative: false
+    notes: Binary companion to brainstorm markdown; retain for history only.
+
+  - current_path: docs/scratch
+    kind: scratch_directory
+    lifecycle_status: scratch
+    indexed: false
+    citable: false
+    authoritative: false
+    notes: Scratch outputs and local experiment artifacts.
