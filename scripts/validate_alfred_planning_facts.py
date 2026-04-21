@@ -57,6 +57,9 @@ class ClaimCategory(str, enum.Enum):
     CURRENT_TOOLING = "CURRENT_TOOLING"
     PARTIAL_STATE = "PARTIAL_STATE"
     PYPROJECT_STATE = "PYPROJECT_STATE"
+    PLACEMENT = "PLACEMENT"
+    HARD_RULE = "HARD_RULE"
+    TASK_GRANULARITY = "TASK_GRANULARITY"
 
 
 @dataclass
@@ -694,6 +697,184 @@ def validate(
     return [f.format() for f in findings]
 
 
+# ---------------------------------------------------------------------------
+# Future-task realism checks
+# ---------------------------------------------------------------------------
+
+_FUTURE_H2S = (
+    "TASK OVERVIEW",
+    "WHAT THIS PHASE PRODUCES",
+)
+
+
+def _future_task_text(sections: dict[str, str]) -> str:
+    """Concatenate body text of future-tense sections only."""
+    parts: list[str] = []
+    for key, body in sections.items():
+        for h2 in _FUTURE_H2S:
+            if _heading_matches(key, h2):
+                parts.append(body)
+                break
+    return "\n".join(parts)
+
+
+# Backtick-quoted YAML/YML paths — potential workflow file references.
+_YAML_PATH_RE = re.compile(r"`(?P<path>[A-Za-z0-9_./@\-]+\.ya?ml)`")
+
+# Filenames that strongly suggest a GitHub Actions workflow.
+_CI_FILENAMES = frozenset({
+    "ci.yml", "cd.yml", "release.yml", "deploy.yml", "build.yml",
+    "test.yml", "lint.yml", "check.yml", "ci.yaml", "cd.yaml",
+    "release.yaml", "deploy.yaml",
+})
+
+# Directory patterns that indicate CI intent but are not `.github/workflows/`.
+_CI_DIR_RE = re.compile(r"^(?:ci|actions|workflow|\.github(?!/workflows))/", re.IGNORECASE)
+
+
+def _check_workflow_placement(text: str) -> list[Finding]:
+    """Flag workflow-like YAML paths not rooted at .github/workflows/."""
+    findings: list[Finding] = []
+    for match in _YAML_PATH_RE.finditer(text):
+        path = match.group("path")
+        if path.startswith(".github/workflows/"):
+            continue
+        filename = Path(path).name.lower()
+        if filename in _CI_FILENAMES or _CI_DIR_RE.match(path):
+            findings.append(Finding(
+                category=ClaimCategory.PLACEMENT,
+                severity="error",
+                message="workflow files must live under `.github/workflows/`.",
+                evidence=f"`{path}`",
+                section="future_tasks",
+            ))
+    return findings
+
+
+def _check_schema_placement(text: str) -> list[Finding]:
+    """Flag src/alfred/schemas.py (single file) — schemas must be a package."""
+    findings: list[Finding] = []
+    if re.search(r"`src/alfred/schemas\.py`", text):
+        findings.append(Finding(
+            category=ClaimCategory.PLACEMENT,
+            severity="error",
+            message=(
+                "schemas should be a package (`src/alfred/schemas/`), "
+                "not a single file `src/alfred/schemas.py`."
+            ),
+            evidence="`src/alfred/schemas.py`",
+            section="future_tasks",
+        ))
+    return findings
+
+
+def _check_future_hard_rules(text: str) -> list[Finding]:
+    """Flag future-task content that violates CLAUDE.md hard rules."""
+    findings: list[Finding] = []
+
+    for m in re.finditer(r"\bmypy\b", text, re.IGNORECASE):
+        window = text[max(0, m.start() - 40):m.end() + 40].lower()
+        if "not " in window or "never " in window or "no mypy" in window:
+            continue
+        findings.append(Finding(
+            category=ClaimCategory.HARD_RULE,
+            severity="error",
+            message="mypy is forbidden (repo uses pyright; CLAUDE.md hard rule).",
+            evidence="`mypy`",
+            section="future_tasks",
+        ))
+        break
+
+    docker_re = re.compile(
+        r"\b(?:Docker|Dockerfile|docker-compose|docker\s+compose)\b",
+        re.IGNORECASE,
+    )
+    for m in docker_re.finditer(text):
+        window = text[max(0, m.start() - 40):m.end() + 40].lower()
+        if "not " in window or "never " in window or "no docker" in window:
+            continue
+        findings.append(Finding(
+            category=ClaimCategory.HARD_RULE,
+            severity="error",
+            message=(
+                "Docker is forbidden until Phase 7 "
+                "(CLAUDE.md: 'No Docker yet — local venv first, containerise in Phase 7')."
+            ),
+            evidence=m.group(0),
+            section="future_tasks",
+        ))
+        break
+
+    return findings
+
+
+_TASK_HEADING_RE = re.compile(r"^###\s+Task\s+\d+.*$", re.MULTILINE)
+
+
+def _check_task_granularity(text: str) -> list[Finding]:
+    """Warn when a numbered task has no quoted file path or no test/validation reference."""
+    findings: list[Finding] = []
+    task_starts = [(m.start(), m.group(0).strip()) for m in _TASK_HEADING_RE.finditer(text)]
+
+    for i, (start, header) in enumerate(task_starts):
+        end = task_starts[i + 1][0] if i + 1 < len(task_starts) else len(text)
+        body = text[start:end]
+
+        has_path = bool(re.search(r"`[A-Za-z][^`]*\.[a-z]{2,4}`", body))
+        has_test_ref = bool(re.search(
+            r"\btest\b|\bvalidat|\bpytest\b|\bcheck\b|\bassert\b",
+            body,
+            re.IGNORECASE,
+        ))
+
+        if not has_path or not has_test_ref:
+            findings.append(Finding(
+                category=ClaimCategory.TASK_GRANULARITY,
+                severity="warning",
+                message="task lacks a quoted file path or a test/validation reference.",
+                evidence=header,
+                section="future_tasks",
+            ))
+
+    return findings
+
+
+def validate_future_task_realism(
+    markdown: str,
+    repo_root: Optional[Path] = None,
+) -> list[Finding]:
+    """Return realism findings for future-task sections.
+
+    Only inspects ``## TASK OVERVIEW`` and ``## WHAT THIS PHASE PRODUCES``.
+    Does not touch current-state sections — use ``validate_current_state_facts``
+    for those.
+    """
+    sections = extract_sections(markdown)
+    future_text = _future_task_text(sections)
+
+    findings: list[Finding] = []
+    findings.extend(_check_workflow_placement(future_text))
+    findings.extend(_check_schema_placement(future_text))
+    findings.extend(_check_future_hard_rules(future_text))
+    findings.extend(_check_task_granularity(future_text))
+    return findings
+
+
+def _print_findings(label: str, findings: list[Finding]) -> None:
+    errors = [f for f in findings if f.severity == "error"]
+    warnings = [f for f in findings if f.severity == "warning"]
+    if errors or warnings:
+        print(f"\n{label}:", file=sys.stderr)
+    if errors:
+        print("  ERRORS:", file=sys.stderr)
+        for f in errors:
+            print(f"    - {f.format()}", file=sys.stderr)
+    if warnings:
+        print("  WARNINGS:", file=sys.stderr)
+        for f in warnings:
+            print(f"    - {f.format()}", file=sys.stderr)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Validate an Alfred planning draft against repository facts.",
@@ -702,6 +883,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--expected-id", default=None)
     parser.add_argument("--expected-previous", default=None)
     parser.add_argument("--expected-date", default=None)
+    parser.add_argument(
+        "--mode",
+        choices=["facts", "realism", "both"],
+        default="both",
+        help="Which validator to run (default: both)",
+    )
     args = parser.parse_args(argv)
 
     if not args.path.is_file():
@@ -713,29 +900,35 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"error: could not read {args.path}: {exc}", file=sys.stderr)
         return 2
 
-    findings = validate_current_state_facts(
-        markdown,
-        source_path=args.path,
-        expected_id=args.expected_id,
-        expected_previous=args.expected_previous,
-        expected_date=args.expected_date,
-    )
+    facts_findings: list[Finding] = []
+    realism_findings: list[Finding] = []
 
-    errors = [f for f in findings if f.severity == "error"]
-    warnings = [f for f in findings if f.severity == "warning"]
+    if args.mode in ("facts", "both"):
+        facts_findings = validate_current_state_facts(
+            markdown,
+            source_path=args.path,
+            expected_id=args.expected_id,
+            expected_previous=args.expected_previous,
+            expected_date=args.expected_date,
+        )
 
-    if errors:
-        print(f"FAIL {args.path}", file=sys.stderr)
-        print("ERRORS:", file=sys.stderr)
-        for f in errors:
-            print(f"  - {f.format()}", file=sys.stderr)
-    if warnings:
-        print("WARNINGS:", file=sys.stderr)
-        for f in warnings:
-            print(f"  - {f.format()}", file=sys.stderr)
+    if args.mode in ("realism", "both"):
+        realism_findings = validate_future_task_realism(markdown)
 
-    if errors:
+    facts_errors = [f for f in facts_findings if f.severity == "error"]
+    realism_errors = [f for f in realism_findings if f.severity == "error"]
+
+    if facts_findings:
+        _print_findings("CURRENT-STATE FACTUAL ISSUES", facts_findings)
+    if realism_findings:
+        _print_findings("FUTURE-TASK REALISM ISSUES", realism_findings)
+
+    if facts_errors:
+        print(f"\nFAIL (factual errors) {args.path}", file=sys.stderr)
         return 1
+    if realism_errors:
+        print(f"\nFAIL (realism errors) {args.path}", file=sys.stderr)
+        return 2
     print(f"OK   {args.path}")
     return 0
 

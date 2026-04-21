@@ -80,6 +80,14 @@ def _build_prompt(input: PlannerInput) -> str:
             "    from missing.\n"
             "  - Do NOT claim the FastAPI app lives anywhere other than the\n"
             "    `FastAPI module path` given below.\n\n"
+            "THREE-STATE VOCABULARY (use these exact phrases):\n"
+            "  When describing any file, module, or workflow, you MUST use one of:\n"
+            "  • `exists today` — a concrete file/module visible in the workspace right now.\n"
+            "  • `declared but unimplemented` — referenced in pyproject.toml or config\n"
+            "    but the implementation file is absent (e.g. CLI entry declared, no cli.py).\n"
+            "  • `to be created in this phase` — proposed by this plan; does not exist yet.\n"
+            "  Never collapse 'declared but unimplemented' into either 'exists' or 'missing'.\n"
+            "  Any `Partial state:` bullet in the facts below identifies declared-but-absent items.\n\n"
             f"{facts_block}"
         )
 

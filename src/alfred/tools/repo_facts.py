@@ -142,6 +142,25 @@ def read_reference_documents(repo_root: Optional[Path] = None) -> list[str]:
     return names
 
 
+def read_repo_conventions(repo_root: Optional[Path] = None) -> dict[str, str]:
+    """Return canonical placement conventions as labeled paths.
+
+    These are stable layout rules that the planner must follow when proposing
+    new files. The validator uses them to flag future-task proposals that land
+    in the wrong directory.
+    """
+    return {
+        "workflow_root": ".github/workflows/",
+        "schema_package_root": "src/alfred/schemas/",
+        "agent_package_root": "src/alfred/agents/",
+        "tool_package_root": "src/alfred/tools/",
+        "script_root": "scripts/",
+        "test_root": "tests/",
+        "docs_root": "docs/",
+        "config_root": "configs/",
+    }
+
+
 def read_partial_state_facts(repo_root: Optional[Path] = None) -> dict[str, str]:
     """Return labeled facts about items declared but not yet implemented.
 
@@ -218,4 +237,8 @@ def build_repo_facts_summary(repo_root: Optional[Path] = None) -> list[str]:
     partial = read_partial_state_facts(root)
     for fact in partial.values():
         lines.append(f"Partial state: {fact}")
+    conventions = read_repo_conventions(root)
+    lines.append("Repo-growth conventions:")
+    for label, path in conventions.items():
+        lines.append(f"  {label}: {path}")
     return lines

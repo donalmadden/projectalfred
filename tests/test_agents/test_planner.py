@@ -463,3 +463,24 @@ def test_prompt_omits_metadata_block_when_fields_empty() -> None:
     planner.run_planner(_minimal_input(), provider="fake", model="m")
     prompt = captured[0]
     assert "GENERATION METADATA" not in prompt
+
+
+def test_prompt_includes_three_state_vocabulary_when_facts_supplied() -> None:
+    captured = _capture_prompt()
+    inp = _minimal_input()
+    inp.repo_facts_summary = _REPO_FACTS
+    planner.run_planner(inp, provider="fake", model="m")
+
+    prompt = captured[0]
+    # All three state phrases must appear verbatim in the REPOSITORY FACTS block.
+    assert "exists today" in prompt
+    assert "declared but unimplemented" in prompt
+    assert "to be created in this phase" in prompt
+    assert "THREE-STATE VOCABULARY" in prompt
+
+
+def test_prompt_omits_three_state_vocabulary_when_no_facts() -> None:
+    captured = _capture_prompt()
+    planner.run_planner(_minimal_input(), provider="fake", model="m")
+    prompt = captured[0]
+    assert "THREE-STATE VOCABULARY" not in prompt

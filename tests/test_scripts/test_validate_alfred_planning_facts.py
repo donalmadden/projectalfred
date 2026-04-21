@@ -18,6 +18,7 @@ from validate_alfred_planning_facts import (  # noqa: E402
     ClaimCategory,
     validate,
     validate_current_state_facts,
+    validate_future_task_realism,
 )
 
 # ---------------------------------------------------------------------------
@@ -417,3 +418,141 @@ def test_release_workflow_present_claim_flagged() -> None:
         if f.category == ClaimCategory.CURRENT_PATH and "release.yml" in f.evidence
     ]
     assert path_findings, "Expected CURRENT_PATH finding for non-existent release.yml"
+
+
+# ---------------------------------------------------------------------------
+# B5 realism tests
+# ---------------------------------------------------------------------------
+
+
+def _wrap_future_tasks(body: str) -> str:
+    """Place ``body`` under ``## TASK OVERVIEW`` with a minimal current-state header."""
+    return "\n".join([
+        "## CONTEXT — READ THIS FIRST",
+        "**id:** ALFRED_HANDOVER_6_DRAFT",
+        "**date:** 2026-04-20",
+        "**previous_handover:** ALFRED_HANDOVER_5",
+        "",
+        "## WHAT EXISTS TODAY",
+        "FastAPI lives in `src/alfred/api.py`.",
+        "",
+        "## TASK OVERVIEW",
+        body,
+        "",
+    ])
+
+
+def test_workflow_at_ci_path_flagged() -> None:
+    md = _wrap_future_tasks(
+        "### Task 1 — Add release workflow\n"
+        "Create `ci/release.yml` that runs on every tag push.\n"
+        "Tests: verify CI passes on a test tag."
+    )
+    findings = validate_future_task_realism(md)
+    placement = [f for f in findings if f.category == ClaimCategory.PLACEMENT]
+    assert placement, "Expected PLACEMENT finding for `ci/release.yml`"
+    assert "ci/release.yml" in placement[0].evidence
+
+
+def test_workflow_at_correct_path_passes() -> None:
+    md = _wrap_future_tasks(
+        "### Task 1 — Add release workflow\n"
+        "Create `.github/workflows/release.yml` that runs on every tag push.\n"
+        "Tests: verify CI passes on a test tag."
+    )
+    findings = validate_future_task_realism(md)
+    placement = [f for f in findings if f.category == ClaimCategory.PLACEMENT]
+    assert not placement, "Correct .github/workflows/ path must not produce a PLACEMENT finding"
+
+
+def test_schema_as_single_file_flagged() -> None:
+    md = _wrap_future_tasks(
+        "### Task 2 — Add health schema\n"
+        "Create `src/alfred/schemas.py` with a HealthCheck model.\n"
+        "Tests: import the model in a unit test."
+    )
+    findings = validate_future_task_realism(md)
+    placement = [f for f in findings if f.category == ClaimCategory.PLACEMENT]
+    assert placement, "Expected PLACEMENT finding for `src/alfred/schemas.py`"
+    assert "schemas.py" in placement[0].evidence
+
+
+def test_schema_as_package_passes() -> None:
+    md = _wrap_future_tasks(
+        "### Task 2 — Add health schema\n"
+        "Create `src/alfred/schemas/health.py` with a HealthCheck model.\n"
+        "Tests: import the model in a unit test."
+    )
+    findings = validate_future_task_realism(md)
+    placement = [f for f in findings if f.category == ClaimCategory.PLACEMENT]
+    assert not placement, "Package-style schema path must not produce a PLACEMENT finding"
+
+
+def test_mypy_in_future_task_flagged() -> None:
+    md = _wrap_future_tasks(
+        "### Task 3 — Add type checking\n"
+        "Integrate mypy into the CI pipeline.\n"
+        "Tests: mypy passes on the src/ tree."
+    )
+    findings = validate_future_task_realism(md)
+    hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
+    assert hard_rule, "Expected HARD_RULE finding for `mypy` in future task"
+    assert "`mypy`" in hard_rule[0].evidence
+
+
+def test_pyright_in_future_task_passes() -> None:
+    md = _wrap_future_tasks(
+        "### Task 3 — Add type checking\n"
+        "Ensure pyright passes on the src/ tree with strict mode.\n"
+        "Tests: pyright exits 0 in CI."
+    )
+    findings = validate_future_task_realism(md)
+    hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
+    assert not hard_rule, "pyright reference must not produce a HARD_RULE finding"
+
+
+def test_docker_in_future_task_flagged() -> None:
+    md = _wrap_future_tasks(
+        "### Task 4 — Containerise\n"
+        "Add a Dockerfile for the FastAPI service.\n"
+        "Tests: docker build succeeds."
+    )
+    findings = validate_future_task_realism(md)
+    hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
+    assert hard_rule, "Expected HARD_RULE finding for Docker in future task"
+
+
+def test_task_without_file_ref_gets_granularity_warning() -> None:
+    md = _wrap_future_tasks(
+        "### Task 5 — Do some work\n"
+        "Refactor the internals to improve performance."
+    )
+    findings = validate_future_task_realism(md)
+    granularity = [f for f in findings if f.category == ClaimCategory.TASK_GRANULARITY]
+    assert granularity, "Expected TASK_GRANULARITY warning for task with no file path"
+    assert granularity[0].severity == "warning"
+
+
+def test_task_with_file_ref_and_test_mention_passes() -> None:
+    md = _wrap_future_tasks(
+        "### Task 5 — Add retry logic\n"
+        "Extend `src/alfred/tools/llm.py` with exponential backoff.\n"
+        "Tests: `pytest tests/test_tools/test_llm.py -q` passes."
+    )
+    findings = validate_future_task_realism(md)
+    granularity = [f for f in findings if f.category == ClaimCategory.TASK_GRANULARITY]
+    assert not granularity, "Task with file ref and test mention must not get TASK_GRANULARITY warning"
+
+
+def test_realism_checks_do_not_fire_on_current_state_sections() -> None:
+    # Current-state sections must be invisible to the realism validator.
+    md = _wrap_future_tasks("")
+    # Inject a schema single-file reference into WHAT EXISTS TODAY (already in _wrap_future_tasks)
+    # but not in TASK OVERVIEW — so realism should not flag it.
+    md_with_current_state_schema = md.replace(
+        "FastAPI lives in `src/alfred/api.py`.",
+        "FastAPI lives in `src/alfred/api.py`. Schema: `src/alfred/schemas.py`.",
+    )
+    findings = validate_future_task_realism(md_with_current_state_schema)
+    placement = [f for f in findings if f.category == ClaimCategory.PLACEMENT]
+    assert not placement, "Realism validator must not inspect current-state sections"
