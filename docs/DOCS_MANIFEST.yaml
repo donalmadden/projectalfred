@@ -155,6 +155,14 @@ documents:
     authoritative: false
     notes: Phase 8 portfolio narrative and guided reviewer walkthrough.
 
+  - current_path: docs/active/OPERATIONALISE_ALFRED.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Architectural review findings and operationalisation brief guiding the next handover phase.
+
   - current_path: docs/active/FACTUAL_VALIDATOR_FUTURE_TASK_PLANNING_REALISM.md
     kind: active_brief
     lifecycle_status: active
