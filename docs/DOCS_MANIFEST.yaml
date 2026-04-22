@@ -163,6 +163,22 @@ documents:
     authoritative: false
     notes: Phased concrete build plan for a docs-native code-project kickoff demo with blank GitHub Project projection.
 
+  - current_path: docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Phase 0 freeze record for the blank-project kickoff demo; locks scenario, project shape, board target, success criterion, and narrated arc.
+
+  - current_path: docs/active/CHARTER.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Draft Customer Onboarding Portal charter for the blank-project kickoff demo; pending ratification before Phase 1 begins.
+
   - current_path: docs/active/OPERATIONALISE_ALFRED.md
     kind: active_brief
     lifecycle_status: active
