@@ -567,18 +567,16 @@ def test_entry_point_planned_absence_claim_flagged(tmp_path: Path) -> None:
     assert any(f.finding_object.state_type.value == "ENTRY_POINT" for f in partial_findings)
 
 
-def test_release_workflow_present_claim_flagged() -> None:
-    # `.github/workflows/release.yml` does not exist in this repo; a current-state
-    # claim that it does must be flagged as CURRENT_PATH.
-    md = _wrap_current_state(
-        "CI is handled via `.github/workflows/release.yml` which runs on every tag."
-    )
+def test_release_workflow_present_claim_not_flagged() -> None:
+    # `.github/workflows/release.yml` now exists in this repo, so a current-state
+    # claim that it exists should not be flagged as CURRENT_PATH.
+    md = _wrap_current_state("CI includes `.github/workflows/release.yml`.")
     findings = validate_current_state_facts(md)
     path_findings = [
         f for f in findings
         if f.category == ClaimCategory.CURRENT_PATH and "release.yml" in f.evidence
     ]
-    assert path_findings, "Expected CURRENT_PATH finding for non-existent release.yml"
+    assert not path_findings, "Did not expect CURRENT_PATH finding for existing release.yml"
 
 
 # ---------------------------------------------------------------------------

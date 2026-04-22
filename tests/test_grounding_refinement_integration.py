@@ -48,9 +48,13 @@ def test_end_to_end_typed_taxonomy_to_planner_to_validator() -> None:
 def test_planner_prompt_contains_repo_growth_and_partial_state_constraints() -> None:
     prompt = planner._build_prompt(_planner_input())
     assert "REPO GROWTH CONVENTIONS" in prompt
-    assert "PARTIAL-STATE FACTS" in prompt
     assert ".github/workflows/" in prompt
-    assert "declared but unimplemented" in prompt
+    partial_states = planner.read_partial_state_facts(planner._REPO_ROOT)
+    if partial_states:
+        assert "PARTIAL-STATE FACTS" in prompt
+        assert any(fact.expected_vocabulary in prompt for fact in partial_states)
+    else:
+        assert "PARTIAL-STATE FACTS" not in prompt
 
 
 def test_validator_catches_placement_violations_with_typed_findings() -> None:

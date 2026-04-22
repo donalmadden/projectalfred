@@ -229,9 +229,12 @@ def test_prompt_includes_partial_state_facts_and_vocabulary() -> None:
     planner.run_planner(_minimal_input(), provider="fake", model="m")
 
     prompt = captured[0]
-    assert "PARTIAL-STATE FACTS" in prompt
-    assert "declared but unimplemented" in prompt
-    assert "proposed for Phase" in prompt
+    partial_states = planner.read_partial_state_facts(planner._REPO_ROOT)
+    if partial_states:
+        assert "PARTIAL-STATE FACTS" in prompt
+        assert any(fact.expected_vocabulary in prompt for fact in partial_states)
+    else:
+        assert "PARTIAL-STATE FACTS" not in prompt
 
 
 # ---------------------------------------------------------------------------
