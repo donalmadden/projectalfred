@@ -462,7 +462,7 @@ _REPO_FACTS = [
         "POST /evaluate, POST /approvals/request"
     ),
     "pyproject.toml: exists=True, [project]=True, [project.scripts]=True, cli_entry=alfred.cli:main",
-    "Type checker: pyright (mypy IS NOT in use)",
+    "Type checker: pyright",
 ]
 
 
@@ -488,7 +488,7 @@ def test_prompt_forbids_contradicting_repo_facts() -> None:
     # The facts block must carry explicit prohibitions against the common
     # hallucinations documented in OUTPUT_HARDENING R1–R11.
     assert "DO NOT CONTRADICT" in prompt
-    assert "mypy" in prompt  # must reference the pyright-vs-mypy guardrail
+    assert "Type checker: pyright" in prompt
     assert "api" in prompt.lower()  # must reference the FastAPI-path guardrail
     assert "Reference Documents" in prompt
     assert "Citable reference docs" in prompt

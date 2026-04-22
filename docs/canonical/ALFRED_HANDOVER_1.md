@@ -2,6 +2,9 @@
 
 ## CONTEXT — READ THIS FIRST
 
+**id:** ALFRED_HANDOVER_1
+**date:** 2026-04-15
+**author:** Donal (Project Lead)
 **Document Date:** 2026-04-15
 **Previous Handover:** None. This is the first.
 **Project:** ProjectAlfred — document-mediated, checkpoint-gated agent coordination for software teams

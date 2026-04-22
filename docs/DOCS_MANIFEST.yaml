@@ -35,6 +35,12 @@ folders:
     citable: false
     authoritative: false
     description: Disposable local working files and captured outputs.
+  governance:
+    path: docs
+    indexed: true
+    citable: true
+    authoritative: true
+    description: Top-level docs-lifecycle governance surfaces (policy and manifest themselves).
 
 documents:
   - current_path: docs/canonical/ALFRED_HANDOVER_1.md
@@ -78,6 +84,14 @@ documents:
     notes: Canonical handover.
 
   - current_path: docs/canonical/ALFRED_HANDOVER_6.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover.
+
+  - current_path: docs/canonical/ALFRED_HANDOVER_7.md
     kind: canonical_handover
     lifecycle_status: canonical
     indexed: true
@@ -205,3 +219,19 @@ documents:
     citable: false
     authoritative: false
     notes: Scratch outputs and local experiment artifacts.
+
+  - current_path: docs/DOCS_POLICY.md
+    kind: governance_doc
+    lifecycle_status: governance
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Defines the docs lifecycle policy itself; authoritative for retrieval/citation rules.
+
+  - current_path: docs/DOCS_MANIFEST.yaml
+    kind: governance_manifest
+    lifecycle_status: governance
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Authoritative inventory of the docs corpus consumed by policy-aware tooling.

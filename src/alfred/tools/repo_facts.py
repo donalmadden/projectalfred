@@ -139,10 +139,32 @@ def read_packaging_state(repo_root: Optional[Path] = None) -> dict[str, object]:
     }
 
 
+def read_type_checkers(repo_root: Optional[Path] = None) -> list[str]:
+    """Return the configured static type checkers inferred from pyproject.toml."""
+    state = read_packaging_state(repo_root)
+    configured: list[str] = []
+    if bool(state["uses_pyright"]):
+        configured.append("pyright")
+    if bool(state["uses_mypy"]):
+        configured.append("mypy")
+    return configured
+
+
 def read_reference_documents(repo_root: Optional[Path] = None) -> list[str]:
     """Return citable markdown docs according to the docs lifecycle policy."""
     root = repo_root or _REPO_ROOT
     return read_citable_docs(root)
+
+
+def read_docs_governance_state(repo_root: Optional[Path] = None) -> dict[str, bool]:
+    """Return whether the docs governance surfaces already exist today."""
+    root = repo_root or _REPO_ROOT
+    docs_dir = root / "docs"
+    return {
+        "policy_exists": (docs_dir / "DOCS_POLICY.md").is_file(),
+        "manifest_exists": (docs_dir / "DOCS_MANIFEST.yaml").is_file(),
+        "archive_dir_exists": (docs_dir / "archive").is_dir(),
+    }
 
 
 def read_repo_growth_facts(repo_root: Optional[Path] = None) -> RepoGrowthFacts:
@@ -312,7 +334,9 @@ def read_partial_state_facts(repo_root: Optional[Path] = None) -> list[PartialSt
             ],
         )
 
-        real_endpoints = set(read_api_surface(root)["endpoints"])
+        api_endpoints = read_api_surface(root)["endpoints"]
+        assert isinstance(api_endpoints, list)
+        real_endpoints = set(api_endpoints)
         rel_handover = latest_handover.relative_to(root).as_posix()
         for state_key, label, signature, endpoint_path in (
             ("healthz_entry_point", "Health liveness endpoint", "GET /healthz", "/healthz"),
@@ -359,7 +383,9 @@ def build_repo_facts_summary(repo_root: Optional[Path] = None) -> list[str]:
     top_level = read_top_level_packages(root)
     api = read_api_surface(root)
     pkg = read_packaging_state(root)
+    type_checkers = read_type_checkers(root)
     reference_docs = read_reference_documents(root)
+    docs_governance = read_docs_governance_state(root)
     growth = read_repo_growth_facts(root)
 
     lines: list[str] = []
@@ -391,8 +417,14 @@ def build_repo_facts_summary(repo_root: Optional[Path] = None) -> list[str]:
         + (", ".join(reference_docs) if reference_docs else "(none)")
     )
     lines.append(
-        f"Type checker: {'pyright' if pkg['uses_pyright'] else 'none'}"
-        + (" (mypy IS NOT in use)" if not pkg["uses_mypy"] else " (mypy present)")
+        "Docs governance: "
+        f"docs/DOCS_POLICY.md exists={docs_governance['policy_exists']}, "
+        f"docs/DOCS_MANIFEST.yaml exists={docs_governance['manifest_exists']}, "
+        f"docs/archive/ exists={docs_governance['archive_dir_exists']}"
+    )
+    lines.append(
+        "Type checker: "
+        + (", ".join(type_checkers) if type_checkers else "none")
     )
     partial = read_partial_state_facts(root)
     if partial:

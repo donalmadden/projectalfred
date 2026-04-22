@@ -271,6 +271,22 @@ _IMPERATIVE_NEG_RE = re.compile(
     re.IGNORECASE,
 )
 
+_MARKDOWN_DECORATION_RE = re.compile(r"[*_`]+")
+_TYPE_CHECKER_NEGATION_RE = re.compile(
+    r"\b(?:do not|don't|must not|should not|cannot|can't|never|forbidden|"
+    r"prohibited|banned|out of scope|hard violation|not in use|is not used|"
+    r"must not be used|should not be used)\b",
+    re.IGNORECASE,
+)
+_TYPE_CHECKER_ACTION_RE = re.compile(
+    r"\b(?:add|adopt|configure|enable|integrate|introduce|install|run|use|wire)\b",
+    re.IGNORECASE,
+)
+_TYPE_CHECKER_CONFIG_MARKERS = {
+    "mypy": ("[tool.mypy]", "mypy.ini"),
+    "pyright": ("[tool.pyright]",),
+}
+
 
 def _find_sentence(text: str, pos: int) -> tuple[str, int]:
     """Return (sentence_text, sentence_start) for the sentence containing pos."""
@@ -315,6 +331,108 @@ def _claim_is_negated(text: str, match_span: tuple[int, int]) -> bool:
     # Non-imperative pre-claim markers: "no `path`", "no such path", etc.
     if re.search(r"\bno\s*$|\bno such\b|\bremoved\b|\bdeleted\b|\babsent\b", pre_claim):
         return True
+
+    return False
+
+
+def _strip_markdown_decoration(text: str) -> str:
+    return _MARKDOWN_DECORATION_RE.sub("", text)
+
+
+def _configured_type_checkers(repo_root: Path) -> list[str]:
+    state = read_packaging_state(repo_root)
+    configured: list[str] = []
+    if bool(state["uses_pyright"]):
+        configured.append("pyright")
+    if bool(state["uses_mypy"]):
+        configured.append("mypy")
+    return configured
+
+
+def _configured_type_checker_label(repo_root: Path) -> str:
+    configured = _configured_type_checkers(repo_root)
+    return ", ".join(configured) if configured else "none configured"
+
+
+def _sentence_negates_type_checker(sentence: str) -> bool:
+    return bool(_TYPE_CHECKER_NEGATION_RE.search(_strip_markdown_decoration(sentence)))
+
+
+def _line_invokes_type_checker(line: str, tool: str) -> bool:
+    plain = _strip_markdown_decoration(line).strip().lower()
+    if not plain or plain.startswith("#"):
+        return False
+    escaped = re.escape(tool)
+    patterns = (
+        rf"^(?:\$ )?(?:python\s+-m\s+)?{escaped}\b",
+        rf"^run:\s*(?:python\s+-m\s+)?{escaped}\b",
+    )
+    return any(re.search(pattern, plain) for pattern in patterns)
+
+
+def _sentence_claims_type_checker(sentence: str, tool: str) -> bool:
+    plain = _strip_markdown_decoration(sentence).lower()
+    if tool not in plain or _sentence_negates_type_checker(sentence):
+        return False
+    escaped = re.escape(tool)
+    claim_patterns = (
+        rf"\btype checker\s*:\s*{escaped}\b",
+        rf"\btype checking\b[^.\n]{{0,60}}\b{escaped}\b",
+        rf"\bhandled by\b[^.\n]{{0,40}}\b{escaped}\b",
+        rf"\b{escaped}\b[^.\n]{{0,80}}\b(?:passes?|runs?|exits?|checks?|job|step|pipeline|ci)\b",
+    )
+    return any(re.search(pattern, plain) for pattern in claim_patterns)
+
+
+def _sentence_proposes_type_checker(sentence: str, tool: str) -> bool:
+    plain = _strip_markdown_decoration(sentence).lower()
+    if tool not in plain or _sentence_negates_type_checker(sentence):
+        return False
+    escaped = re.escape(tool)
+    proposal_patterns = (
+        rf"\b(?:add|adopt|configure|enable|integrate|introduce|install|run|use|wire)\b[^.\n]{{0,80}}\b{escaped}\b",
+        rf"\btype checking\b[^.\n]{{0,60}}\b{escaped}\b",
+        rf"\btype checker\b[^.\n]{{0,60}}\b{escaped}\b",
+        rf"\b{escaped}\b[^.\n]{{0,80}}\b(?:passes?|runs?|exits?|checks?|job|step|pipeline|ci)\b",
+    )
+    if any(re.search(pattern, plain) for pattern in proposal_patterns):
+        return True
+
+    config_markers = _TYPE_CHECKER_CONFIG_MARKERS.get(tool, ())
+    if any(marker in plain for marker in config_markers) and _TYPE_CHECKER_ACTION_RE.search(plain):
+        return True
+
+    return False
+
+
+def _current_state_claims_absent_type_checker(text: str, tool: str) -> bool:
+    plain = _strip_markdown_decoration(text)
+    for match in re.finditer(rf"\b{re.escape(tool)}\b", plain, re.IGNORECASE):
+        sentence, _ = _find_sentence(plain, match.start())
+        if _sentence_claims_type_checker(sentence, tool):
+            return True
+    return False
+
+
+def _future_text_proposes_absent_type_checker(text: str, tool: str) -> bool:
+    plain = _strip_markdown_decoration(text)
+
+    config_markers = _TYPE_CHECKER_CONFIG_MARKERS.get(tool, ())
+    for line in plain.splitlines():
+        stripped = line.strip().lower()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if _line_invokes_type_checker(line, tool):
+            return True
+        if any(marker in stripped for marker in config_markers):
+            if stripped.startswith(("- ", "* ", "|")) or _TYPE_CHECKER_ACTION_RE.search(stripped):
+                if not _sentence_negates_type_checker(stripped):
+                    return True
+
+    for match in re.finditer(rf"\b{re.escape(tool)}\b", plain, re.IGNORECASE):
+        sentence, _ = _find_sentence(plain, match.start())
+        if _sentence_proposes_type_checker(sentence, tool):
+            return True
 
     return False
 
@@ -446,6 +564,7 @@ def _check_api_topology(text: str, repo_root: Path) -> list[Finding]:
     api = read_api_surface(repo_root)
     real_path = api["module_path"]
     real_endpoints = api["endpoints"]
+    assert isinstance(real_path, str)
     assert isinstance(real_endpoints, list)
 
     # Reject directory-style claims about the API module.
@@ -585,26 +704,28 @@ def _check_top_level_packages(text: str, repo_root: Path) -> list[Finding]:
     return findings
 
 
-def _check_type_checker(text: str) -> list[Finding]:
+def _check_type_checker(text: str, repo_root: Path) -> list[Finding]:
     findings: list[Finding] = []
-    # "mypy" mentioned as part of current-state tooling is wrong.
-    # Allow mention in contexts that explicitly negate it ("mypy is not used").
-    for m in re.finditer(r"\bmypy\b", text, re.IGNORECASE):
-        window_start = max(0, m.start() - 40)
-        window_end = min(len(text), m.end() + 40)
-        window = text[window_start:window_end].lower()
-        if "not " in window or "never " in window or "is not" in window:
+    configured = _configured_type_checkers(repo_root)
+    allowed_tool = _configured_type_checker_label(repo_root)
+    for tool in ("pyright", "mypy"):
+        if tool in configured:
+            continue
+        if not _current_state_claims_absent_type_checker(text, tool):
             continue
         findings.append(
             Finding(
                 category=ClaimCategory.CURRENT_TOOLING,
                 severity="error",
-                human_message="the repo uses `pyright`. Phase 6 explicitly forbids adding `mypy`.",
-                evidence="`mypy`",
+                human_message=(
+                    f"the live type-checking toolchain from `pyproject.toml` is "
+                    f"`{allowed_tool}`; `{tool}` is not configured today."
+                ),
+                evidence=f"`{tool}`",
                 section="current_state",
                 finding_object=ToolingFinding(
-                    claimed_tool="mypy",
-                    allowed_tool="pyright",
+                    claimed_tool=tool,
+                    allowed_tool=allowed_tool,
                 ),
             )
         )
@@ -872,7 +993,7 @@ def validate_current_state_facts(
     findings.extend(_check_api_topology(current, root))
     findings.extend(_check_agent_roster(current, root))
     findings.extend(_check_top_level_packages(current, root))
-    findings.extend(_check_type_checker(current))
+    findings.extend(_check_type_checker(current, root))
     findings.extend(_check_pyproject_state(current, root))
     findings.extend(_check_partial_state(current, root))
     return findings
@@ -936,7 +1057,6 @@ _CI_FILENAMES = frozenset({
 # Directory patterns that indicate CI intent but are not `.github/workflows/`.
 _CI_DIR_RE = re.compile(r"^(?:ci|actions|workflow|\.github(?!/workflows))/", re.IGNORECASE)
 
-
 def _check_workflow_placement(text: str) -> list[Finding]:
     """Flag workflow-like YAML paths not rooted at .github/workflows/."""
     findings: list[Finding] = []
@@ -996,25 +1116,39 @@ def _extract_handover_phase(markdown: str) -> Optional[int]:
     return int(match.group("phase"))
 
 
-def _check_future_hard_rules(text: str, *, phase_number: Optional[int] = None) -> list[Finding]:
+def _check_future_hard_rules(
+    text: str,
+    repo_root: Path,
+    *,
+    phase_number: Optional[int] = None,
+) -> list[Finding]:
     """Flag future-task content that violates CLAUDE.md hard rules."""
     findings: list[Finding] = []
 
-    for m in re.finditer(r"\bmypy\b", text, re.IGNORECASE):
-        window = text[max(0, m.start() - 40):m.end() + 40].lower()
-        if "not " in window or "never " in window or "no mypy" in window:
+    configured = _configured_type_checkers(repo_root)
+    allowed_tool = _configured_type_checker_label(repo_root)
+    for tool in ("pyright", "mypy"):
+        if tool in configured:
+            continue
+        if not _future_text_proposes_absent_type_checker(text, tool):
             continue
         findings.append(
             Finding(
                 category=ClaimCategory.HARD_RULE,
                 severity="error",
-                human_message="mypy is forbidden (repo uses pyright; CLAUDE.md hard rule).",
-                evidence="`mypy`",
+                human_message=(
+                    f"draft introduces `{tool}`, but the live type-checking toolchain "
+                    f"from `pyproject.toml` is `{allowed_tool}`."
+                ),
+                evidence=f"`{tool}`",
                 section="future_tasks",
                 finding_object=HardRuleFinding(
-                    rule_name="no_mypy",
-                    violation="future task proposes mypy",
-                    constraint="use pyright; do not introduce mypy",
+                    rule_name="unexpected_type_checker",
+                    violation=f"future task proposes {tool}",
+                    constraint=(
+                        "keep the current type-checking toolchain unless a human "
+                        "explicitly approves a pyproject/tooling change"
+                    ),
                 ),
             )
         )
@@ -1100,6 +1234,7 @@ def validate_future_task_realism(
     Does not touch current-state sections — use ``validate_current_state_facts``
     for those.
     """
+    root = repo_root or Path(__file__).resolve().parents[1]
     sections = extract_sections(markdown)
     future_text = _future_task_text(sections)
     phase_number = _extract_handover_phase(markdown)
@@ -1107,7 +1242,7 @@ def validate_future_task_realism(
     findings: list[Finding] = []
     findings.extend(_check_workflow_placement(future_text))
     findings.extend(_check_schema_placement(future_text))
-    findings.extend(_check_future_hard_rules(future_text, phase_number=phase_number))
+    findings.extend(_check_future_hard_rules(future_text, root, phase_number=phase_number))
     findings.extend(_check_task_granularity(future_text))
     return findings
 

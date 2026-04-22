@@ -173,20 +173,51 @@ def test_does_not_flag_bare_role_word_executor() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Type checker check (R6: mypy claim)
+# Type checker check (R6: unexpected type-checker claim)
 # ---------------------------------------------------------------------------
 
 
 def test_flags_mypy_in_current_state() -> None:
     md = _wrap_current_state("Type checking is handled by mypy.")
-    errors = validate(md)
-    assert any("mypy" in e and "pyright" in e for e in errors)
+    findings = validate_current_state_facts(md)
+    tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
+    assert tooling
+    assert tooling[0].finding_object.claimed_tool == "mypy"
+    assert tooling[0].finding_object.allowed_tool == "pyright"
 
 
 def test_does_not_flag_negated_mypy_mention() -> None:
     md = _wrap_current_state("Note: mypy is not used; the repo uses pyright.")
-    errors = validate(md)
-    assert not any("Phase 6 explicitly forbids" in e for e in errors)
+    findings = validate_current_state_facts(md)
+    tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
+    assert not tooling
+
+
+def test_does_not_flag_mypy_described_as_hard_violation() -> None:
+    md = _wrap_current_state(
+        "Type checking uses `pyright`. Introducing `mypy` is a hard violation."
+    )
+    findings = validate_current_state_facts(md)
+    tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
+    assert not tooling
+
+
+def test_does_not_flag_mypy_described_as_forbidden() -> None:
+    md = _wrap_current_state(
+        "The `mypy` tool is forbidden by hard rule; the repo uses `pyright`."
+    )
+    findings = validate_current_state_facts(md)
+    tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
+    assert not tooling
+
+
+def test_does_not_flag_markdown_formatted_negated_mypy_mention() -> None:
+    md = _wrap_current_state(
+        "Type checker: `pyright` (`mypy` is **not** in use and must not be referenced)."
+    )
+    findings = validate_current_state_facts(md)
+    tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
+    assert not tooling
 
 
 # ---------------------------------------------------------------------------
@@ -657,6 +688,53 @@ def test_mypy_in_future_task_flagged() -> None:
     hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
     assert hard_rule, "Expected HARD_RULE finding for `mypy` in future task"
     assert "`mypy`" in hard_rule[0].evidence
+
+
+def test_negated_mypy_in_future_task_passes() -> None:
+    md = _wrap_future_tasks(
+        "### Task 3 — Keep the type-checking policy consistent\n"
+        "Keep pyright as the only type checker; do not add mypy anywhere.\n"
+        "Tests: pyright exits 0 in CI."
+    )
+    findings = validate_future_task_realism(md)
+    hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
+    assert not hard_rule, "Prohibiting `mypy` must not produce a HARD_RULE finding"
+
+
+def test_mypy_audit_cleanup_in_future_task_passes() -> None:
+    md = _wrap_future_tasks(
+        "### Task 3 — Clean stale tooling references\n"
+        "Audit README content and remove stale references to mypy or `[tool.mypy]`.\n"
+        "Tests: `rg -n \"mypy\" README.md docs/ pyproject.toml` only reports approved prohibitions."
+    )
+    findings = validate_future_task_realism(md)
+    hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
+    assert not hard_rule, "Audit and removal work around `mypy` must be allowed"
+
+
+def test_bare_mypy_mention_in_out_of_scope_bullet_passes() -> None:
+    md = _wrap_future_tasks(
+        "### Task 3 — Define scope\n"
+        "Out of scope:\n"
+        "- `mypy` or any type-checker other than `pyright`.\n"
+        "Tests: scope section is reviewed."
+    )
+    findings = validate_future_task_realism(md)
+    hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
+    assert not hard_rule, "Bare `mypy` listed as out-of-scope must not trigger HARD_RULE"
+
+
+def test_mypy_command_in_future_task_flagged() -> None:
+    md = _wrap_future_tasks(
+        "### Task 3 — Add type checking\n"
+        "Verification commands:\n"
+        "```bash\n"
+        "mypy src/\n"
+        "```\n"
+    )
+    findings = validate_future_task_realism(md)
+    hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
+    assert hard_rule, "Explicit mypy command should count as introducing an absent tool"
 
 
 def test_pyright_in_future_task_passes() -> None:

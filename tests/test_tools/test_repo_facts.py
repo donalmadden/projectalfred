@@ -21,6 +21,7 @@ def fake_repo(tmp_path: Path) -> Path:
     (alfred / "schemas").mkdir(parents=True)
     (tmp_path / ".github" / "workflows").mkdir(parents=True)
     (tmp_path / "docs").mkdir(parents=True)
+    (tmp_path / "docs" / "archive").mkdir(parents=True)
 
     # Package markers
     (alfred / "__init__.py").write_text("")
@@ -59,6 +60,12 @@ def fake_repo(tmp_path: Path) -> Path:
         "include = [\"src\"]\n"
     )
     (tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: ci\n", encoding="utf-8")
+    (tmp_path / "docs" / "DOCS_POLICY.md").write_text("# Docs Policy\n", encoding="utf-8")
+    (tmp_path / "docs" / "DOCS_MANIFEST.yaml").write_text(
+        "manifest_version: 1\n"
+        "documents: []\n",
+        encoding="utf-8",
+    )
     (tmp_path / "docs" / "ALFRED_HANDOVER_6.md").write_text(
         "# Alfred's Handover Document #6 — Phase 7\n\n"
         "## CONTEXT — READ THIS FIRST\n"
@@ -212,8 +219,8 @@ def test_build_repo_facts_summary_contains_fastapi_path(fake_repo: Path) -> None
 def test_build_repo_facts_summary_mentions_pyright_not_mypy(fake_repo: Path) -> None:
     lines = repo_facts.build_repo_facts_summary(fake_repo)
     joined = "\n".join(lines)
-    assert "pyright" in joined
-    assert "mypy IS NOT in use" in joined
+    assert "Type checker: pyright" in joined
+    assert "mypy IS NOT in use" not in joined
 
 
 def test_build_repo_facts_summary_is_deterministic(fake_repo: Path) -> None:
@@ -234,6 +241,15 @@ def test_build_repo_facts_summary_lists_citable_reference_docs(fake_repo: Path) 
     joined = "\n".join(lines)
     assert "Citable reference docs:" in joined
     assert "docs/ALFRED_HANDOVER_6.md" in joined
+
+
+def test_build_repo_facts_summary_mentions_docs_governance_state(fake_repo: Path) -> None:
+    lines = repo_facts.build_repo_facts_summary(fake_repo)
+    joined = "\n".join(lines)
+    assert "Docs governance:" in joined
+    assert "docs/DOCS_POLICY.md exists=True" in joined
+    assert "docs/DOCS_MANIFEST.yaml exists=True" in joined
+    assert "docs/archive/ exists=True" in joined
 
 
 def test_read_partial_state_facts_tracks_multiple_state_types(fake_repo: Path) -> None:
