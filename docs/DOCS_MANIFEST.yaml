@@ -155,6 +155,14 @@ documents:
     authoritative: false
     notes: Phase 8 portfolio narrative and guided reviewer walkthrough.
 
+  - current_path: docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Phased concrete build plan for a docs-native code-project kickoff demo with blank GitHub Project projection.
+
   - current_path: docs/active/OPERATIONALISE_ALFRED.md
     kind: active_brief
     lifecycle_status: active
@@ -162,6 +170,14 @@ documents:
     citable: true
     authoritative: false
     notes: Architectural review findings and operationalisation brief guiding the next handover phase.
+
+  - current_path: docs/active/FUTURE_ARCHITECTURE_DISCUSSIONS.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Active record of promising but not yet canonized architecture/product-shape discussions, including docs-native Alfred and handovers as the versioned wiki spine.
 
   - current_path: docs/active/FACTUAL_VALIDATOR_FUTURE_TASK_PLANNING_REALISM.md
     kind: active_brief
