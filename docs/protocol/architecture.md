@@ -6,8 +6,11 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         API Layer (FastAPI)                         │
-│  POST /generate  POST /evaluate  POST /approve  GET /dashboard      │
+│                   Entry Points / Runtime Surface                    │
+│  CLI: alfred plan  alfred evaluate  alfred serve  alfred validate  │
+│       alfred version                                                │
+│  API: POST /generate  POST /compile  POST /evaluate                │
+│       GET /healthz  GET /readyz  approvals/*  GET /dashboard       │
 └────────────────────────────┬────────────────────────────────────────┘
                              │
                              ▼
@@ -64,7 +67,8 @@
 
 | Component | Responsibility | Implementation |
 |---|---|---|
-| **API Layer** | HTTP endpoints, HITL approval gate, dashboard reads | `src/alfred/api.py` — FastAPI routers only |
+| **API Layer** | HTTP endpoints, health probes, HITL approval gate, dashboard reads | `src/alfred/api.py` — FastAPI routers only |
+| **CLI** | Packaged operator entrypoint for planning, evaluation, validation, version inspection, and serving | `src/alfred/cli.py` |
 | **Orchestrator** | Routes work to agents, enforces checkpoint gates, manages handover lifecycle | `src/alfred/orchestrator.py` — single function |
 | **Planner** | Sprint planning, capacity, priority, handover drafting | `src/alfred/agents/planner.py` |
 | **Story Generator** | RAG-powered story creation against quality rubric | `src/alfred/agents/story_generator.py` |
@@ -73,8 +77,19 @@
 | **GitHub API** | Read board state, write stories (with HITL gate), query velocity | `src/alfred/tools/github_api.py` |
 | **RAG Engine** | Index handover corpus, chunk at section boundaries, retrieve | `src/alfred/tools/rag.py` |
 | **LLM Adapter** | Provider-agnostic LLM calls; returns structured output | `src/alfred/tools/llm.py` |
+| **Logging** | Structured JSON logs with request IDs for HTTP traffic and lifecycle events | `src/alfred/tools/logging.py` |
 | **Persistence** | SQLite operational bookkeeping (not the source of truth) | `src/alfred/tools/persistence.py` |
 | **Document Layer** | Handover documents on filesystem — the protocol (property 1) | Markdown files, read by all components |
+
+### Operational surface
+
+The Phase 7 deployment/runtime surface now includes:
+
+- `GET /healthz` returning `{"status": "ok"}` for liveness checks.
+- `GET /readyz` returning `{"status": "ready"}` when Alfred is ready to serve requests and HTTP 503 when dependencies are unavailable.
+- [`Dockerfile`](../../Dockerfile) building a rootless image whose default command is `alfred serve --host 0.0.0.0 --port 8000`.
+- [`docker-compose.yml`](../../docker-compose.yml) wiring local env injection from [`.env.example`](../../.env.example) and a read-only workspace mount at `/workspace`.
+- [`.github/workflows/release.yml`](../../.github/workflows/release.yml) publishing the wheel to PyPI and the container image to GHCR on `v*.*.*` tags.
 
 ---
 
@@ -131,7 +146,7 @@ A human triggers handover generation. Alfred drafts; the human approves.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  TRIGGER: POST /generate  (or CLI: alfred generate --from-board)    │
+│  TRIGGER: POST /generate  (or CLI: alfred plan)                     │
 └─────────────────────────┬───────────────────────────────────────────┘
                           │
                           ▼
@@ -184,7 +199,7 @@ The executor completes a task and pastes output. The Quality Judge evaluates it.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  TRIGGER: POST /evaluate  (executor output + checkpoint definition) │
+│  TRIGGER: POST /evaluate  (or CLI: alfred evaluate)                │
 └─────────────────────────┬───────────────────────────────────────────┘
                           │
                           ▼
@@ -390,7 +405,7 @@ No agent writes to the board directly. Board writes require a HITL approval gate
 | R3 | RAG retrieves irrelevant chunks, degrading planner quality | Medium | Medium | Section-boundary chunking (not sentence-boundary); relevance score threshold; log retrieved chunks to HandoverDocument for inspection |
 | R4 | Checkpoint decision tables become stale as methodology evolves | Low | High | Decision tables live in the handover document itself, not in code — human updates the document, not a config file |
 | R5 | HITL gate blocks indefinitely in automated runs | Low | Low | Configurable timeout; default verdict on timeout (stop, not proceed); surface timeout in HandoverDocument |
-| R6 | SQLite diverges from document corpus (e.g., manual edits to docs) | Medium | Low | SQLite is rebuildable from corpus at any time; provide `alfred rebuild-index` command in Phase 7 |
+| R6 | SQLite diverges from document corpus (e.g., manual edits to docs) | Medium | Low | SQLite is rebuildable from corpus at any time; add a dedicated maintenance command later if operator demand justifies it |
 | R7 | Circular import between `handover.py` and `checkpoint.py` | Resolved | — | Deferred import at module bottom with `model_rebuild()` — pattern is in place |
 | R8 | Orchestrator grows implicit state over time (methodology drift) | Medium | High | Orchestrator is a single function with no instance variables; state is only written to HandoverDocument; enforced by code review |
 
@@ -410,7 +425,7 @@ Phase 6 adds a four-layer test pyramid. Each layer targets a different failure m
 
 ### Layer 1 — Unit tests (`tests/`, excluding `tests/property/`)
 
-Standard pytest suite. Tests individual functions: schema validation, orchestrator task dispatch, agent runners with a mocked LLM provider, tool contracts, and API endpoints via `TestClient`. Excludes the property and eval layers.
+Standard pytest suite. Tests individual functions: schema validation, orchestrator task dispatch, agent runners with a mocked LLM provider, tool contracts, and API endpoints via an in-process HTTP client. Excludes the property and eval layers.
 
 Run: `pytest tests/ --ignore=tests/property -q`
 
@@ -454,7 +469,7 @@ Two gates run after the full test suite:
    - `src/alfred/orchestrator.py` — 79% (structural gap from external I/O; acknowledged)
    - `src/alfred/agents/planner.py` — 80%
 
-Coverage gaps and exclusion policy are documented in [`docs/coverage_baseline.md`](coverage_baseline.md).
+Per-module thresholds live in [`scripts/coverage_thresholds.json`](../../scripts/coverage_thresholds.json).
 
 ### CI pipeline (`.github/workflows/ci.yml`)
 

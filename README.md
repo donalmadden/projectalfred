@@ -10,10 +10,10 @@ Alfred operationalises a specific methodology for human+AI software development:
 
 ## Status
 
-- Core platform implemented through Phase 6.
-- Current runtime includes schemas, four agent roles, four tool integrations, a hand-rolled orchestrator, a handover compiler, and a FastAPI API.
-- Phase 6 complete: property tests (Hypothesis), eval harness, coverage gates (≥ 80% global), and a 5-stage CI pipeline.
-- Phase 7+ work remains open: deployment packaging, Docker/runtime polish, and broader governance hardening.
+- Core platform now includes the Phase 7 runtime and deployment surface.
+- Current runtime includes typed schemas, four agent roles plus the compiler, a packaged CLI, a FastAPI API, structured request-aware logging, health probes, a rootless Docker image, and a tag-scoped release workflow.
+- Quality gates remain in place: property tests (Hypothesis), eval harness, coverage gates (>= 80% global), and a 5-stage CI pipeline.
+- Broader governance hardening and production deployment targets beyond the current Docker surface remain open.
 
 ## The Problem
 
@@ -46,7 +46,10 @@ Five design principles:
 - **Evaluates** checkpoints against executor output and routes `proceed` / `pivot` / `stop` / `escalate`
 - **Retrieves** prior handover context through a local RAG index over markdown documents
 - **Tracks** approval requests, expiry, and bookkeeping in SQLite
-- **Exposes** the system through a FastAPI surface for generation, compilation, evaluation, approvals, retrospectives, and dashboard reads
+- **Exposes** the system through a FastAPI surface for generation, compilation, evaluation, approvals, retrospectives, dashboard reads, and `/healthz` + `/readyz` probes
+- **Ships** a packaged CLI for planning, evaluation, validation, version inspection, and local serving
+- **Emits** structured JSON logs with per-request correlation IDs for API traffic
+- **Runs** through a rootless Docker image locally and publishes release artifacts on version tags
 
 ## Agent Architecture
 
@@ -71,6 +74,8 @@ The currently implemented HTTP entrypoints are:
 - `POST /approvals/expire`
 - `POST /retrospective`
 - `GET /dashboard`
+- `GET /healthz`
+- `GET /readyz`
 
 ## Capability Status
 
@@ -87,38 +92,105 @@ The currently implemented HTTP entrypoints are:
 | Evaluation harness | Implemented (Phase 6) |
 | Property-based tests | Implemented (Phase 6) |
 | Coverage gates and CI pipeline | Implemented (Phase 6) |
-| Deployment/runtime packaging | Planned in Phase 7 |
+| CLI entrypoint | Implemented (Phase 7) |
+| Health and readiness probes | Implemented (Phase 7) |
+| Structured request logging | Implemented (Phase 7) |
+| Deployment/runtime packaging | Implemented (Phase 7) |
+| Release automation | Implemented (Phase 7) |
 | Enterprise governance hardening | Planned in later phases |
 
-## Running Locally
+## Quick Start (Local)
 
 From the repo root:
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -e '.[dev]'
-
-# Unit tests
-pytest tests/ --ignore=tests/property -q
-
-# Property tests (Hypothesis)
-pytest tests/property/ -v
-
-# Eval harness (deterministic fixtures, no API keys required)
-python evals/run_evals.py
-
-# Full suite with coverage gate
-pytest --cov=alfred --cov-fail-under=80 -q --tb=short
-python scripts/check_coverage.py
-
-# API server
-uvicorn alfred.api:app --reload
+alfred version
+alfred serve --reload
 ```
 
 Notes:
 
 - Runtime configuration lives in [`configs/default.yaml`](configs/default.yaml).
-- The FastAPI app is the stable entrypoint today.
-- A packaged CLI should not be considered the primary entrypoint yet.
+- Export provider or GitHub credentials in your shell before commands that need live model or board access.
+- The packaged CLI is the preferred local entrypoint; `alfred serve` wraps the FastAPI app.
+- Probe the service with:
+
+```bash
+curl -s http://127.0.0.1:8000/healthz
+curl -s http://127.0.0.1:8000/readyz
+```
+
+- Run the full local quality gate with:
+
+```bash
+pytest tests/ --ignore=tests/property -q
+pytest tests/property/ -v
+python evals/run_evals.py
+pytest --cov=alfred --cov-fail-under=80 -q --tb=short
+python scripts/check_coverage.py
+```
+
+## Quick Start (Docker)
+
+Use Docker Compose for the local container workflow:
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Then verify the service from another shell:
+
+```bash
+curl -s http://127.0.0.1:8000/healthz
+curl -s http://127.0.0.1:8000/readyz
+```
+
+Notes:
+
+- [`docker-compose.yml`](docker-compose.yml) injects variables from [`.env.example`](.env.example) via your local `.env`.
+- `ALFRED_WORKSPACE_PATH` defaults to `.` and is mounted read-only at `/workspace`; change it in `.env` if you want the container to see a different checkout.
+- [`Dockerfile`](Dockerfile) builds a rootless image whose default command is `alfred serve --host 0.0.0.0 --port 8000`.
+
+## Environment Variables
+
+The supported runtime variables are documented in [`.env.example`](.env.example):
+
+- `LOG_LEVEL`: JSON log verbosity for API and middleware logging.
+- `SHUTDOWN_DRAIN_TIMEOUT_S`: maximum shutdown drain window for pending approvals.
+- `ANTHROPIC_API_KEY`: Anthropic credential for live planning and evaluation requests.
+- `OPENAI_API_KEY`: OpenAI credential for live planning and evaluation requests.
+- `GITHUB_TOKEN`: GitHub Projects V2 access for board-backed workflows.
+- `ALFRED_WORKSPACE_PATH`: host path mounted into `/workspace` by Docker Compose.
+
+## CLI Reference
+
+The packaged entrypoint is `alfred`. Top-level help currently looks like:
+
+```text
+usage: alfred [-h] {plan,evaluate,serve,validate,version} ...
+```
+
+Subcommands:
+
+- `alfred plan`: generate a draft handover plan.
+- `alfred evaluate`: evaluate checkpoint evidence against a checkpoint definition.
+- `alfred serve`: run the FastAPI service through uvicorn.
+- `alfred validate`: run the planning factual validator against a handover markdown file.
+- `alfred version`: print the installed Alfred package version.
+
+Useful examples:
+
+```bash
+alfred --help
+alfred plan --dry-run
+alfred evaluate --dry-run
+alfred validate docs/canonical/ALFRED_HANDOVER_6.md
+alfred serve --help
+```
 
 ## Dogfood
 
@@ -134,8 +206,8 @@ Phase 5 closed with a successful generation → compile → execute → checkpoi
 
 Alfred is not production-ready yet. The main unfinished areas are:
 
-- deployment/runtime packaging
-- Docker and operational polish
+- broader production deployment targets beyond the current Docker surface
+- additional operator ergonomics beyond the current CLI and probe set
 - broader governance and enterprise-readiness work
 
 ## Academic Context
