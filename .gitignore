@@ -48,6 +48,9 @@ faiss_index/
 logs/
 *.log
 
+# Local tool state
+.remember/
+
 # Scratch
 docs/scratch/
 
