@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  alfred:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["alfred", "serve", "--host", "0.0.0.0", "--port", "8000"]
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ${ALFRED_WORKSPACE_PATH:-.}:/workspace:ro
+    working_dir: /workspace

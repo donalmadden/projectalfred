@@ -1,0 +1,14 @@
+.git
+__pycache__/
+*.pyc
+tests/
+docs/
+.env*
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+data/
+coverage.json
+.coverage
