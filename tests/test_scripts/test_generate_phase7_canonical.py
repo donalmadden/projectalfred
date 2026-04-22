@@ -119,7 +119,7 @@ def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:
         "- `docs/archive/ALFRED_HANDOVER_6_old.md` — archive\n\n"
         "## WHAT EXISTS TODAY\n"
         "Historical continuity came from `docs/archive/ALFRED_HANDOVER_6_old.md`.\n"
-        "`src/alfred/tools/logging.py` is to be created in this phase.\n"
+        "`src/alfred/tools/nonexistent_logging.py` is to be created in this phase.\n"
     )
 
     normalised = g7c.normalise_generated_markdown(markdown)
@@ -127,5 +127,5 @@ def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:
     assert "`docs/canonical/ALFRED_HANDOVER_5.md`" in normalised
     assert "`docs/archive/ALFRED_HANDOVER_6_old.md`" not in normalised
     assert "archived Phase 7 historical handover snapshot" in normalised
-    assert "`src/alfred/tools/logging.py`" not in normalised
-    assert "src/alfred/tools/logging.py" in normalised
+    assert "`src/alfred/tools/nonexistent_logging.py`" not in normalised
+    assert "src/alfred/tools/nonexistent_logging.py" in normalised

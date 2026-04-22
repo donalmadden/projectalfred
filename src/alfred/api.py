@@ -8,9 +8,14 @@ call time, never from config.
 """
 from __future__ import annotations
 
+import asyncio
 import math
 import os
-from typing import Any, Literal, Optional
+import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any, Literal, Optional, cast
 
 import yaml
 from fastapi import FastAPI, HTTPException, Request
@@ -31,9 +36,7 @@ from alfred.schemas.agent import (
 )
 from alfred.schemas.config import AlfredConfig
 from alfred.tools.git_log import read_git_log
-
-app = FastAPI(title="Alfred")
-
+from alfred.tools.logging import RequestIdMiddleware, configure_logging, get_logger
 
 # ---------------------------------------------------------------------------
 # Config — injectable for tests
@@ -43,13 +46,23 @@ _config: Optional[AlfredConfig] = None
 
 
 def _load_default_config() -> AlfredConfig:
-    config_path = os.path.join(os.path.dirname(__file__), "..", "..", "configs", "default.yaml")
-    try:
-        with open(config_path) as f:
-            data = yaml.safe_load(f)
-        return AlfredConfig.model_validate(data or {})
-    except Exception:
-        return AlfredConfig()
+    candidate_paths = [
+        Path(__file__).resolve().parents[2] / "configs" / "default.yaml",
+        Path.cwd() / "configs" / "default.yaml",
+    ]
+    seen: set[Path] = set()
+    for config_path in candidate_paths:
+        resolved = config_path.resolve()
+        if resolved in seen or not resolved.is_file():
+            continue
+        seen.add(resolved)
+        try:
+            with resolved.open(encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            return AlfredConfig.model_validate(data or {})
+        except Exception:
+            continue
+    return AlfredConfig()
 
 
 def get_config() -> AlfredConfig:
@@ -134,6 +147,14 @@ class DashboardResponse(BaseModel):
     pending_approvals_count: int = 0
 
 
+class HealthResponse(BaseModel):
+    status: Literal["ok"]
+
+
+class ReadyResponse(BaseModel):
+    status: Literal["ready"]
+
+
 class CompileRequest(BaseModel):
     draft_handover_markdown: str
     handover_id: str
@@ -172,7 +193,6 @@ def _make_json_safe(value: Any) -> Any:
     return value
 
 
-@app.exception_handler(RequestValidationError)
 async def handle_request_validation_error(
     _request: Request,
     exc: RequestValidationError,
@@ -212,9 +232,110 @@ def _get_rag_chunks(query: str, config: AlfredConfig) -> list[RAGChunk]:
         return []
 
 
+def _readiness_failure_reason(config: AlfredConfig) -> Optional[str]:
+    """Return a readiness failure detail, or None when critical dependencies are healthy."""
+    db_path = config.database.path.strip()
+    if not db_path:
+        return None
+
+    try:
+        from alfred.tools.persistence import count_pending_approvals
+
+        count_pending_approvals(db_path)
+    except Exception as exc:
+        return f"Persistence layer unavailable: {exc}"
+
+    return None
+
+
+api_logger = get_logger("alfred.api")
+
+
+def _shutdown_drain_timeout_seconds() -> float:
+    raw = os.environ.get("SHUTDOWN_DRAIN_TIMEOUT_S", "10").strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 10.0
+
+
+async def drain_approvals(timeout: float) -> int:
+    """Wait briefly for open approvals, then expire any that remain pending."""
+    from alfred.tools.persistence import get_pending_approvals, record_approval_decision
+
+    config = get_config()
+    db_path = (config.database.path or "").strip()
+    if not db_path:
+        return 0
+
+    deadline = time.monotonic() + max(0.0, timeout)
+    pending = get_pending_approvals(db_path)
+    while pending and time.monotonic() < deadline:
+        remaining = deadline - time.monotonic()
+        await asyncio.sleep(min(0.05, remaining))
+        pending = get_pending_approvals(db_path)
+
+    expired_count = 0
+    for approval in pending:
+        approval_id = approval["id"] or ""
+        try:
+            record_approval_decision(db_path, approval_id, "expired")
+        except ValueError:
+            continue
+
+        expired_count += 1
+        api_logger.warning(
+            "expired pending approval during shutdown",
+            extra={
+                "approval_id": approval["id"],
+                "handover_id": approval["handover_id"],
+                "action_type": approval["action_type"],
+            },
+        )
+
+    return expired_count
+
+
+@asynccontextmanager
+async def alfred_lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    configure_logging(os.environ.get("LOG_LEVEL", "INFO"))
+    api_logger.info("application startup")
+    try:
+        yield
+    finally:
+        expired_count = await drain_approvals(_shutdown_drain_timeout_seconds())
+        api_logger.info(
+            "application shutdown complete",
+            extra={"expired_count": expired_count},
+        )
+
+
+app = FastAPI(title="Alfred", lifespan=alfred_lifespan)
+app.add_middleware(RequestIdMiddleware)
+app.add_exception_handler(RequestValidationError, cast(Any, handle_request_validation_error))
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+
+@app.get("/healthz", response_model=HealthResponse)
+async def healthz() -> HealthResponse:
+    """Liveness probe: respond if the process is up."""
+    return HealthResponse(status="ok")
+
+
+@app.get("/readyz", response_model=ReadyResponse)
+async def readyz() -> ReadyResponse | JSONResponse:
+    """Readiness probe: confirm Alfred can use its configured critical dependencies."""
+    reason = _readiness_failure_reason(get_config())
+    if reason is not None:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unavailable", "reason": reason},
+        )
+    return ReadyResponse(status="ready")
 
 
 @app.post("/generate", response_model=GenerateResponse)

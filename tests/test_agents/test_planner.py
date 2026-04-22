@@ -451,10 +451,13 @@ def test_scaffold_instruction_uses_tbd_marker_when_no_git_history() -> None:
 
 _REPO_FACTS = [
     "Agent modules in src/alfred/agents/: compiler, planner, quality_judge, retro_analyst, story_generator",
-    "Tool modules in src/alfred/tools/: git_log, github_api, llm, persistence, rag, repo_facts",
-    "Top-level names under src/alfred/: agents, api, orchestrator, schemas, tools",
+    "Tool modules in src/alfred/tools/: git_log, github_api, llm, logging, persistence, rag, repo_facts",
+    "Top-level names under src/alfred/: agents, api, cli, orchestrator, schemas, tools",
     "FastAPI module path: src/alfred/api.py",
-    "FastAPI endpoints (9): POST /generate, POST /evaluate, POST /approvals/request",
+    (
+        "FastAPI endpoints (11): GET /healthz, GET /readyz, POST /generate, "
+        "POST /evaluate, POST /approvals/request"
+    ),
     "pyproject.toml: exists=True, [project]=True, [project.scripts]=True, cli_entry=alfred.cli:main",
     "Type checker: pyright (mypy IS NOT in use)",
 ]

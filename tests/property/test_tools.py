@@ -104,10 +104,9 @@ def test_llm_error_raised_after_retries_exhausted() -> None:
 
 def test_compile_endpoint_returns_422_for_missing_fields() -> None:
     """POST /compile with missing required fields returns HTTP 422."""
-    from fastapi.testclient import TestClient
-
     from alfred.api import app, set_config
     from alfred.schemas.config import AlfredConfig
+    from tests.http_client import SyncASGIClient
 
     cfg = AlfredConfig()
     cfg.llm.provider = "fake"
@@ -117,7 +116,7 @@ def test_compile_endpoint_returns_422_for_missing_fields() -> None:
     cfg.rag.index_path = ""
     set_config(cfg)
     try:
-        client = TestClient(app)
+        client = SyncASGIClient(app)
         response = client.post("/compile", json={"invalid_field": "payload"})
         assert response.status_code == 422
     finally:
@@ -134,10 +133,9 @@ def test_compile_endpoint_returns_422_for_missing_fields() -> None:
 )
 def test_compile_endpoint_returns_422_for_non_json_string_body(bad_body: str) -> None:
     """POST /compile with a plain text body (not JSON object) returns HTTP 422."""
-    from fastapi.testclient import TestClient
-
     from alfred.api import app, set_config
     from alfred.schemas.config import AlfredConfig
+    from tests.http_client import SyncASGIClient
 
     cfg = AlfredConfig()
     cfg.llm.provider = "fake"
@@ -147,7 +145,7 @@ def test_compile_endpoint_returns_422_for_non_json_string_body(bad_body: str) ->
     cfg.rag.index_path = ""
     set_config(cfg)
     try:
-        client = TestClient(app)
+        client = SyncASGIClient(app)
         response = client.post(
             "/compile",
             content=bad_body.encode(),

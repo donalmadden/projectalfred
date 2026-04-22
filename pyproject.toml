@@ -62,3 +62,5 @@ ignore = ["E501", "UP045", "UP037", "E402", "F541"]
 pythonVersion = "3.10"
 include = ["src", "tests"]
 strict = []
+venvPath = "."
+venv = ".venv"

@@ -7,11 +7,11 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from fastapi.testclient import TestClient
 
 from alfred.api import app, set_config
 from alfred.schemas.config import AlfredConfig
 from alfred.tools import llm
+from tests.http_client import SyncASGIClient
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -40,12 +40,12 @@ def _inject_config():
 
 
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(app)
+def client() -> SyncASGIClient:
+    return SyncASGIClient(app)
 
 
 @pytest.fixture
-def db_client(tmp_path: Path) -> TestClient:
+def db_client(tmp_path: Path) -> SyncASGIClient:
     """Client with a real database configured — required for approval endpoints."""
     cfg = AlfredConfig()
     cfg.llm.provider = "fake"
@@ -55,13 +55,38 @@ def db_client(tmp_path: Path) -> TestClient:
     cfg.rag.index_path = ""
     cfg.hitl.timeout_seconds = 3600
     set_config(cfg)
-    return TestClient(app)
+    return SyncASGIClient(app)
 
 
 def _install_llm_fake(response: dict[str, Any]) -> None:
     def fake(prompt: str, output_schema: Any, model: str) -> tuple[dict[str, Any], int]:
         return response, 10
     llm._PROVIDERS["fake"] = fake
+
+
+# ---------------------------------------------------------------------------
+# GET /healthz and /readyz
+# ---------------------------------------------------------------------------
+
+
+def test_healthz_returns_200(client: SyncASGIClient) -> None:
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_readyz_returns_200_when_database_is_reachable(db_client: SyncASGIClient) -> None:
+    resp = db_client.get("/readyz")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ready"}
+
+
+def test_readyz_returns_503_when_dependency_is_unavailable(client: SyncASGIClient) -> None:
+    with patch("alfred.api._readiness_failure_reason", return_value="persistence unavailable"):
+        resp = client.get("/readyz")
+
+    assert resp.status_code == 503
+    assert resp.json() == {"status": "unavailable", "reason": "persistence unavailable"}
 
 
 # ---------------------------------------------------------------------------
@@ -76,13 +101,13 @@ _PLANNER_RESPONSE = {
 }
 
 
-def test_generate_returns_200(client: TestClient) -> None:
+def test_generate_returns_200(client: SyncASGIClient) -> None:
     _install_llm_fake(_PLANNER_RESPONSE)
     resp = client.post("/generate", json={"sprint_goal": "Ship auth refactor"})
     assert resp.status_code == 200
 
 
-def test_generate_response_shape(client: TestClient) -> None:
+def test_generate_response_shape(client: SyncASGIClient) -> None:
     _install_llm_fake(_PLANNER_RESPONSE)
     resp = client.post("/generate", json={})
     body = resp.json()
@@ -91,7 +116,7 @@ def test_generate_response_shape(client: TestClient) -> None:
     assert "open_questions" in body
 
 
-def test_generate_returns_draft_content(client: TestClient) -> None:
+def test_generate_returns_draft_content(client: SyncASGIClient) -> None:
     _install_llm_fake(_PLANNER_RESPONSE)
     resp = client.post("/generate", json={"sprint_goal": "Auth"})
     assert "Draft" in resp.json()["draft_handover_markdown"]
@@ -135,7 +160,7 @@ def test_generate_injects_canonical_scaffold_into_planner_prompt(tmp_path: Path)
 
     llm._PROVIDERS["fake"] = fake
 
-    client = TestClient(app)
+    client = SyncASGIClient(app)
     resp = client.post("/generate", json={"sprint_goal": "Phase 6"})
 
     assert resp.status_code == 200
@@ -173,7 +198,7 @@ def test_generate_injects_git_history_into_planner_prompt() -> None:
     ]
 
     with patch("alfred.api.read_git_log", return_value=fake_history):
-        client = TestClient(app)
+        client = SyncASGIClient(app)
         resp = client.post("/generate", json={"sprint_goal": "Phase 6"})
 
     assert resp.status_code == 200
@@ -182,7 +207,7 @@ def test_generate_injects_git_history_into_planner_prompt() -> None:
     assert "GIT HISTORY" in captured[0]
 
 
-def test_compile_returns_422_for_infinity_json_scalar(client: TestClient) -> None:
+def test_compile_returns_422_for_infinity_json_scalar(client: SyncASGIClient) -> None:
     response = client.post(
         "/compile",
         content=b"Infinity",
@@ -222,7 +247,7 @@ _CHECKPOINT_DEF = json.dumps({
 })
 
 
-def test_evaluate_returns_200(client: TestClient) -> None:
+def test_evaluate_returns_200(client: SyncASGIClient) -> None:
     _install_llm_fake({"matched_index": 0, "reasoning": "pass"})
     resp = client.post("/evaluate", json={
         "handover_document_markdown": "# Handover\n\n## Checkpoint\n\ngate",
@@ -232,7 +257,7 @@ def test_evaluate_returns_200(client: TestClient) -> None:
     assert resp.status_code == 200
 
 
-def test_evaluate_response_shape(client: TestClient) -> None:
+def test_evaluate_response_shape(client: SyncASGIClient) -> None:
     _install_llm_fake({"matched_index": 0, "reasoning": "pass"})
     resp = client.post("/evaluate", json={
         "handover_document_markdown": "# H\n\n## Checkpoint\n\ngate",
@@ -245,7 +270,7 @@ def test_evaluate_response_shape(client: TestClient) -> None:
     assert "hitl_required" in body
 
 
-def test_evaluate_proceed_verdict(client: TestClient) -> None:
+def test_evaluate_proceed_verdict(client: SyncASGIClient) -> None:
     _install_llm_fake({"matched_index": 0, "reasoning": "all pass"})
     resp = client.post("/evaluate", json={
         "handover_document_markdown": "# H\n\n## Checkpoint\n\ngate",
@@ -256,7 +281,7 @@ def test_evaluate_proceed_verdict(client: TestClient) -> None:
     assert resp.json()["hitl_required"] is False
 
 
-def test_evaluate_stop_verdict(client: TestClient) -> None:
+def test_evaluate_stop_verdict(client: SyncASGIClient) -> None:
     _install_llm_fake({"matched_index": 1, "reasoning": "fail"})
     resp = client.post("/evaluate", json={
         "handover_document_markdown": "# H\n\n## Checkpoint\n\ngate",
@@ -273,7 +298,7 @@ def test_evaluate_stop_verdict(client: TestClient) -> None:
 
 
 def test_request_approval_endpoint_creates_pending_record(
-    db_client: TestClient, tmp_path: Path
+    db_client: SyncASGIClient, tmp_path: Path
 ) -> None:
     resp = db_client.post("/approvals/request", json={
         "handover_id": "ALFRED_HANDOVER_4",
@@ -293,7 +318,7 @@ def test_request_approval_endpoint_creates_pending_record(
     assert pending[0]["decision"] is None
 
 
-def test_approve_endpoint_records_decision(db_client: TestClient) -> None:
+def test_approve_endpoint_records_decision(db_client: SyncASGIClient) -> None:
     create_resp = db_client.post("/approvals/request", json={
         "handover_id": "ALFRED_HANDOVER_4",
         "action_type": "story_creation",
@@ -315,7 +340,7 @@ def test_approve_endpoint_records_decision(db_client: TestClient) -> None:
     assert len(pending) == 0
 
 
-def test_expire_endpoint_marks_expired(db_client: TestClient) -> None:
+def test_expire_endpoint_marks_expired(db_client: SyncASGIClient) -> None:
     from alfred.api import get_config
     cfg = get_config()
     cfg.hitl.timeout_seconds = 0  # expire immediately
@@ -335,7 +360,7 @@ def test_expire_endpoint_marks_expired(db_client: TestClient) -> None:
     assert len(pending) == 0
 
 
-def test_approve_not_found_returns_404(db_client: TestClient) -> None:
+def test_approve_not_found_returns_404(db_client: SyncASGIClient) -> None:
     resp = db_client.post("/approve", json={
         "approval_id": "does-not-exist",
         "decision": "approved",
@@ -343,7 +368,7 @@ def test_approve_not_found_returns_404(db_client: TestClient) -> None:
     assert resp.status_code == 404
 
 
-def test_approve_already_decided_returns_409(db_client: TestClient) -> None:
+def test_approve_already_decided_returns_409(db_client: SyncASGIClient) -> None:
     create_resp = db_client.post("/approvals/request", json={
         "handover_id": "ALFRED_HANDOVER_4",
         "action_type": "story_creation",
@@ -374,13 +399,13 @@ _RETRO_RESPONSE = {
 }
 
 
-def test_retrospective_returns_200(client: TestClient) -> None:
+def test_retrospective_returns_200(client: SyncASGIClient) -> None:
     _install_llm_fake(_RETRO_RESPONSE)
     resp = client.post("/retrospective", json={"analysis_focus": "deployment"})
     assert resp.status_code == 200
 
 
-def test_retrospective_response_shape(client: TestClient) -> None:
+def test_retrospective_response_shape(client: SyncASGIClient) -> None:
     _install_llm_fake(_RETRO_RESPONSE)
     resp = client.post("/retrospective", json={})
     body = resp.json()
@@ -389,7 +414,7 @@ def test_retrospective_response_shape(client: TestClient) -> None:
     assert "velocity_trend" in body
 
 
-def test_retrospective_summary_populated(client: TestClient) -> None:
+def test_retrospective_summary_populated(client: SyncASGIClient) -> None:
     _install_llm_fake(_RETRO_RESPONSE)
     resp = client.post("/retrospective", json={})
     assert "stable" in resp.json()["retrospective_summary"]
@@ -400,12 +425,12 @@ def test_retrospective_summary_populated(client: TestClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_dashboard_returns_200(client: TestClient) -> None:
+def test_dashboard_returns_200(client: SyncASGIClient) -> None:
     resp = client.get("/dashboard")
     assert resp.status_code == 200
 
 
-def test_dashboard_response_shape(client: TestClient) -> None:
+def test_dashboard_response_shape(client: SyncASGIClient) -> None:
     resp = client.get("/dashboard")
     body = resp.json()
     assert "board_state" in body
@@ -413,14 +438,14 @@ def test_dashboard_response_shape(client: TestClient) -> None:
     assert "recent_checkpoints" in body
 
 
-def test_dashboard_empty_when_no_data(client: TestClient) -> None:
+def test_dashboard_empty_when_no_data(client: SyncASGIClient) -> None:
     resp = client.get("/dashboard")
     body = resp.json()
     assert body["velocity_history"] == []
     assert body["recent_checkpoints"] == []
 
 
-def test_dashboard_includes_pending_count(db_client: TestClient) -> None:
+def test_dashboard_includes_pending_count(db_client: SyncASGIClient) -> None:
     body = db_client.get("/dashboard").json()
     assert "pending_approvals_count" in body
     assert body["pending_approvals_count"] == 0
