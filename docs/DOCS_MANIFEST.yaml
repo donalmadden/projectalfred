@@ -107,6 +107,14 @@ documents:
     authoritative: true
     notes: Stable architecture and methodology reference.
 
+  - current_path: docs/protocol/OPERATOR_RUNBOOK.md
+    kind: protocol_doc
+    lifecycle_status: protocol
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Operator survival guide for local startup, probes, shutdown, and observability.
+
   - current_path: docs/protocol/builder_prompt.md
     kind: protocol_doc
     lifecycle_status: protocol
@@ -138,6 +146,14 @@ documents:
     citable: true
     authoritative: false
     notes: Current grounding-refinement execution brief.
+
+  - current_path: docs/active/ALFRED_HANDOVER_7_PORTFOLIO_POLISH.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Phase 8 portfolio narrative and guided reviewer walkthrough.
 
   - current_path: docs/active/FACTUAL_VALIDATOR_FUTURE_TASK_PLANNING_REALISM.md
     kind: active_brief
@@ -181,6 +197,14 @@ documents:
     notes: Archived previous Phase 7 handover snapshot retained for reference only.
 
   - current_path: docs/archive/ALFRED_HANDOVER_6_FAILED_CANDIDATE.md
+    kind: failed_candidate
+    lifecycle_status: archive
+    indexed: false
+    citable: false
+    authoritative: false
+    notes: Validator-blocked candidate; preserve for debugging, exclude from default retrieval.
+
+  - current_path: docs/archive/ALFRED_HANDOVER_7_FAILED_CANDIDATE.md
     kind: failed_candidate
     lifecycle_status: archive
     indexed: false

@@ -1,0 +1,25 @@
+name: Docs Governance
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "scripts/check_manifest.py"
+
+jobs:
+  manifest-check:
+    name: Manifest check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Check docs manifest
+        run: python scripts/check_manifest.py

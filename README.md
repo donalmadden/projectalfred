@@ -8,6 +8,13 @@ Alfred operationalises a specific methodology for human+AI software development:
 
 [![CI](https://github.com/donal/projectalfred/actions/workflows/ci.yml/badge.svg)](https://github.com/donal/projectalfred/actions/workflows/ci.yml)
 
+## What This Project Demonstrates
+
+- Document-mediated coordination, with the handover artifact acting as the shared protocol between humans and agents.
+- Checkpoint-gated execution, so work can proceed, pivot, stop, or escalate through explicit evaluation instead of open-ended agent autonomy.
+- Typed, role-isolated architecture across the planner, quality judge, retro analyst, story generator, compiler, and supporting schema/tool layers.
+- Practical delivery discipline through structured logging, health probes, a packaged CLI, Docker deployment, CI/CD, and docs-governance checks.
+
 ## Status
 
 - Core platform now includes the Phase 7 runtime and deployment surface.
@@ -154,6 +161,10 @@ Notes:
 - [`docker-compose.yml`](docker-compose.yml) injects variables from [`.env.example`](.env.example) via your local `.env`.
 - `ALFRED_WORKSPACE_PATH` defaults to `.` and is mounted read-only at `/workspace`; change it in `.env` if you want the container to see a different checkout.
 - [`Dockerfile`](Dockerfile) builds a rootless image whose default command is `alfred serve --host 0.0.0.0 --port 8000`.
+
+## Operator Runbook
+
+For cold-start deployment, probe checks, shutdown behavior, and observability guidance, see [docs/protocol/OPERATOR_RUNBOOK.md](docs/protocol/OPERATOR_RUNBOOK.md).
 
 ## Environment Variables
 
