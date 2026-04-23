@@ -99,6 +99,14 @@ documents:
     authoritative: true
     notes: Latest promoted canonical handover today.
 
+  - current_path: docs/canonical/ALFRED_HANDOVER_8.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover for Phase 1 of the blank-project kickoff demo.
+
   - current_path: docs/protocol/architecture.md
     kind: protocol_doc
     lifecycle_status: protocol
