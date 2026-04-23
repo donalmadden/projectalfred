@@ -50,7 +50,7 @@ def fake_repo(tmp_path: Path) -> Path:
         "def approvals_request(): ...\n"
     )
 
-    # pyproject.toml with both markers and pyright
+    # pyproject.toml with a configured type checker
     (tmp_path / "pyproject.toml").write_text(
         "[project]\n"
         "name = \"alfred\"\n\n"
@@ -137,8 +137,7 @@ def test_read_packaging_state_detects_project_table(fake_repo: Path) -> None:
     assert state["pyproject_exists"] is True
     assert state["has_project_table"] is True
     assert state["has_project_scripts"] is True
-    assert state["uses_pyright"] is True
-    assert state["uses_mypy"] is False
+    assert state["type_checkers"] == ["pyright"]
     assert state["cli_script_entry"] == "alfred.cli:main"
 
 
@@ -146,16 +145,38 @@ def test_read_packaging_state_missing_pyproject(tmp_path: Path) -> None:
     state = repo_facts.read_packaging_state(tmp_path)
     assert state["pyproject_exists"] is False
     assert state["has_project_table"] is False
+    assert state["type_checkers"] == []
     assert state["cli_script_entry"] is None
 
 
-def test_read_packaging_state_detects_mypy_when_present(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("tool_config", "expected"),
+    [
+        ("[tool.mypy]\nstrict = true\n", ["mypy"]),
+        ("[tool.basedpyright]\nstrict = true\n", ["basedpyright"]),
+    ],
+)
+def test_read_packaging_state_detects_configured_type_checkers(
+    tmp_path: Path,
+    tool_config: str,
+    expected: list[str],
+) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        "[project]\nname = \"x\"\n\n[tool.mypy]\nstrict = true\n"
+        "[project]\nname = \"x\"\n\n" + tool_config
     )
     state = repo_facts.read_packaging_state(tmp_path)
-    assert state["uses_mypy"] is True
-    assert state["uses_pyright"] is False
+    assert state["type_checkers"] == expected
+
+
+def test_read_type_checkers_returns_all_configured_tools_in_stable_order(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = \"x\"\n\n"
+        "[tool.pyright]\n"
+        "[tool.basedpyright]\n"
+        "[tool.mypy]\n",
+        encoding="utf-8",
+    )
+    assert repo_facts.read_type_checkers(tmp_path) == ["basedpyright", "mypy", "pyright"]
 
 
 def test_read_reference_documents_respects_docs_manifest(tmp_path: Path) -> None:
@@ -216,7 +237,7 @@ def test_build_repo_facts_summary_contains_fastapi_path(fake_repo: Path) -> None
     assert "src/alfred/api.py" in joined
 
 
-def test_build_repo_facts_summary_mentions_pyright_not_mypy(fake_repo: Path) -> None:
+def test_build_repo_facts_summary_lists_configured_type_checker(fake_repo: Path) -> None:
     lines = repo_facts.build_repo_facts_summary(fake_repo)
     joined = "\n".join(lines)
     assert "Type checker: pyright" in joined
@@ -292,7 +313,5 @@ def test_live_repo_api_is_single_file() -> None:
     assert len(api["endpoints"]) > 0
 
 
-def test_live_repo_uses_pyright_not_mypy() -> None:
-    state = repo_facts.read_packaging_state()
-    assert state["uses_pyright"] is True
-    assert state["uses_mypy"] is False
+def test_live_repo_reports_configured_type_checkers() -> None:
+    assert repo_facts.read_type_checkers() == ["pyright"]

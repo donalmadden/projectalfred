@@ -95,6 +95,24 @@ def test_cross_link_to_nonexistent_doc_fails(tmp_path: Path) -> None:
     assert issues[0].issue_type == "cross_link_missing"
 
 
+def test_optional_deferred_cross_link_to_future_doc_passes(tmp_path: Path) -> None:
+    doc = tmp_path / "docs" / "protocol" / "architecture.md"
+    _write(
+        doc,
+        "# Architecture\n\n"
+        "- Optional `docs/CURRENT_STATE.md` is deferred and may add a "
+        "\"what exists\" anchor later.\n",
+    )
+
+    issues = validate_reference_doc_cross_links(
+        "docs/protocol/architecture.md",
+        {"docs/protocol/architecture.md"},
+        tmp_path,
+    )
+
+    assert issues == []
+
+
 def test_extract_reference_doc_metadata_reads_expected_fields(tmp_path: Path) -> None:
     doc = tmp_path / "docs" / "ALFRED_HANDOVER_6.md"
     _write(

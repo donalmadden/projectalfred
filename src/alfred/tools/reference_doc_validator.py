@@ -12,6 +12,7 @@ from alfred.tools.docs_policy import is_citable_doc, load_docs_policy_entries, r
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DOC_LINK_RE = re.compile(r"`(?P<path>docs/[A-Za-z0-9_./\-]+\.md)`")
+_SENTENCE_SEP_RE = re.compile(r"\n\n|(?<=\w)\. |```")
 _TITLE_RE = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 _ID_RE = re.compile(r"\*\*id:\*\*\s*(?P<value>[A-Za-z0-9_\-]+)")
 _DATE_RE = re.compile(r"\*\*date:\*\*\s*(?P<value>[0-9]{4}-[0-9]{2}-[0-9]{2})")
@@ -19,6 +20,16 @@ _AUTHOR_RE = re.compile(r"\*\*author:\*\*\s*(?P<value>.+)")
 _H2_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 _HANDOVER_NAME_RE = re.compile(r"ALFRED_HANDOVER_(\d+)(?:_[A-Z0-9_]+)?\.md$")
 _STALE_REFERENCE_DAYS = 90
+_DEFERRED_DOC_MARKERS = (
+    "optional",
+    "deferred",
+    "not required",
+    "must not be pre-created",
+    "not be pre-created",
+    "may add",
+    "may create",
+    "to be created",
+)
 
 
 class ReferenceDocMetadata(BaseModel):
@@ -68,6 +79,24 @@ def _normalise_doc_link_path(doc_path: str, repo_root: Optional[Path]) -> str:
     if len(unique_matches) == 1:
         return unique_matches[0]
     return doc_path
+
+
+def _find_sentence(text: str, pos: int) -> str:
+    """Return the sentence containing ``pos`` for nearby intent checks."""
+    sent_start = 0
+    for match in _SENTENCE_SEP_RE.finditer(text):
+        if match.end() <= pos:
+            sent_start = match.end()
+        else:
+            break
+    after = _SENTENCE_SEP_RE.search(text, pos)
+    sent_end = after.start() if after else len(text)
+    return text[sent_start:sent_end]
+
+
+def _link_is_deferred_or_optional(text: str, match_start: int) -> bool:
+    sentence = _find_sentence(text, match_start).lower()
+    return any(marker in sentence for marker in _DEFERRED_DOC_MARKERS)
 
 
 def extract_reference_doc_metadata(
@@ -211,6 +240,8 @@ def validate_reference_doc_cross_links(
         seen.add(link)
         normalised_link = _normalise_doc_link_path(link, repo_root)
         if link in inventory or normalised_link in inventory:
+            continue
+        if _link_is_deferred_or_optional(text, match.start()):
             continue
         issues.append(
             ReferenceDocIssue(

@@ -61,6 +61,8 @@ from alfred.tools.repo_facts import (  # noqa: E402
     read_packaging_state,
     read_partial_state_facts,
     read_reference_documents,
+    read_supported_type_checkers,
+    read_type_checkers,
     read_top_level_packages,
 )
 
@@ -272,20 +274,10 @@ _IMPERATIVE_NEG_RE = re.compile(
 )
 
 _MARKDOWN_DECORATION_RE = re.compile(r"[*_`]+")
-_TYPE_CHECKER_NEGATION_RE = re.compile(
-    r"\b(?:do not|don't|must not|should not|cannot|can't|never|forbidden|"
-    r"prohibited|banned|out of scope|hard violation|not in use|is not used|"
-    r"must not be used|should not be used)\b",
-    re.IGNORECASE,
-)
 _TYPE_CHECKER_ACTION_RE = re.compile(
     r"\b(?:add|adopt|configure|enable|integrate|introduce|install|run|use|wire)\b",
     re.IGNORECASE,
 )
-_TYPE_CHECKER_CONFIG_MARKERS = {
-    "mypy": ("[tool.mypy]", "mypy.ini"),
-    "pyright": ("[tool.pyright]",),
-}
 
 
 def _find_sentence(text: str, pos: int) -> tuple[str, int]:
@@ -339,23 +331,23 @@ def _strip_markdown_decoration(text: str) -> str:
     return _MARKDOWN_DECORATION_RE.sub("", text)
 
 
-def _configured_type_checkers(repo_root: Path) -> list[str]:
-    state = read_packaging_state(repo_root)
-    configured: list[str] = []
-    if bool(state["uses_pyright"]):
-        configured.append("pyright")
-    if bool(state["uses_mypy"]):
-        configured.append("mypy")
-    return configured
-
-
 def _configured_type_checker_label(repo_root: Path) -> str:
-    configured = _configured_type_checkers(repo_root)
+    configured = read_type_checkers(repo_root)
     return ", ".join(configured) if configured else "none configured"
 
 
-def _sentence_negates_type_checker(sentence: str) -> bool:
-    return bool(_TYPE_CHECKER_NEGATION_RE.search(_strip_markdown_decoration(sentence)))
+def _sentence_negates_type_checker(sentence: str, tool: str) -> bool:
+    plain = _strip_markdown_decoration(sentence).lower()
+    escaped = re.escape(tool)
+    negation_patterns = (
+        rf"\b(?:do not|don't|must not|should not|cannot|can't|never)\b"
+        rf"[^.\n]{{0,40}}\b{escaped}\b",
+        rf"\b(?:no|not)\s+{escaped}\b",
+        rf"\b{escaped}\b[^.\n]{{0,40}}\b(?:not in use|is not used|"
+        rf"must not be used|should not be used|forbidden|prohibited|"
+        rf"banned|out of scope|hard violation)\b",
+    )
+    return any(re.search(pattern, plain) for pattern in negation_patterns)
 
 
 def _line_invokes_type_checker(line: str, tool: str) -> bool:
@@ -372,7 +364,7 @@ def _line_invokes_type_checker(line: str, tool: str) -> bool:
 
 def _sentence_claims_type_checker(sentence: str, tool: str) -> bool:
     plain = _strip_markdown_decoration(sentence).lower()
-    if tool not in plain or _sentence_negates_type_checker(sentence):
+    if tool not in plain or _sentence_negates_type_checker(sentence, tool):
         return False
     escaped = re.escape(tool)
     claim_patterns = (
@@ -386,7 +378,7 @@ def _sentence_claims_type_checker(sentence: str, tool: str) -> bool:
 
 def _sentence_proposes_type_checker(sentence: str, tool: str) -> bool:
     plain = _strip_markdown_decoration(sentence).lower()
-    if tool not in plain or _sentence_negates_type_checker(sentence):
+    if tool not in plain or _sentence_negates_type_checker(sentence, tool):
         return False
     escaped = re.escape(tool)
     proposal_patterns = (
@@ -395,14 +387,12 @@ def _sentence_proposes_type_checker(sentence: str, tool: str) -> bool:
         rf"\btype checker\b[^.\n]{{0,60}}\b{escaped}\b",
         rf"\b{escaped}\b[^.\n]{{0,80}}\b(?:passes?|runs?|exits?|checks?|job|step|pipeline|ci)\b",
     )
-    if any(re.search(pattern, plain) for pattern in proposal_patterns):
-        return True
+    return any(re.search(pattern, plain) for pattern in proposal_patterns)
 
-    config_markers = _TYPE_CHECKER_CONFIG_MARKERS.get(tool, ())
-    if any(marker in plain for marker in config_markers) and _TYPE_CHECKER_ACTION_RE.search(plain):
-        return True
 
-    return False
+def _unexpected_type_checkers(repo_root: Path) -> list[str]:
+    configured = set(read_type_checkers(repo_root))
+    return [tool for tool in read_supported_type_checkers() if tool not in configured]
 
 
 def _current_state_claims_absent_type_checker(text: str, tool: str) -> bool:
@@ -417,16 +407,15 @@ def _current_state_claims_absent_type_checker(text: str, tool: str) -> bool:
 def _future_text_proposes_absent_type_checker(text: str, tool: str) -> bool:
     plain = _strip_markdown_decoration(text)
 
-    config_markers = _TYPE_CHECKER_CONFIG_MARKERS.get(tool, ())
     for line in plain.splitlines():
         stripped = line.strip().lower()
         if not stripped or stripped.startswith("#"):
             continue
         if _line_invokes_type_checker(line, tool):
             return True
-        if any(marker in stripped for marker in config_markers):
+        if f"[tool.{tool}]" in stripped:
             if stripped.startswith(("- ", "* ", "|")) or _TYPE_CHECKER_ACTION_RE.search(stripped):
-                if not _sentence_negates_type_checker(stripped):
+                if not _sentence_negates_type_checker(stripped, tool):
                     return True
 
     for match in re.finditer(rf"\b{re.escape(tool)}\b", plain, re.IGNORECASE):
@@ -706,11 +695,8 @@ def _check_top_level_packages(text: str, repo_root: Path) -> list[Finding]:
 
 def _check_type_checker(text: str, repo_root: Path) -> list[Finding]:
     findings: list[Finding] = []
-    configured = _configured_type_checkers(repo_root)
     allowed_tool = _configured_type_checker_label(repo_root)
-    for tool in ("pyright", "mypy"):
-        if tool in configured:
-            continue
+    for tool in _unexpected_type_checkers(repo_root):
         if not _current_state_claims_absent_type_checker(text, tool):
             continue
         findings.append(
@@ -1125,11 +1111,8 @@ def _check_future_hard_rules(
     """Flag future-task content that violates CLAUDE.md hard rules."""
     findings: list[Finding] = []
 
-    configured = _configured_type_checkers(repo_root)
     allowed_tool = _configured_type_checker_label(repo_root)
-    for tool in ("pyright", "mypy"):
-        if tool in configured:
-            continue
+    for tool in _unexpected_type_checkers(repo_root):
         if not _future_text_proposes_absent_type_checker(text, tool):
             continue
         findings.append(

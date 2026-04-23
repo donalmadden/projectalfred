@@ -83,6 +83,15 @@ _ENDPOINT_RE = re.compile(
     re.MULTILINE,
 )
 _HANDOVER_NUMBER_RE = re.compile(r"ALFRED_HANDOVER_(?P<number>\d+)(?:_[A-Z0-9_]+)?\.md$")
+_SUPPORTED_TYPE_CHECKERS = (
+    "basedpyright",
+    "mypy",
+    "pyright",
+    "pyre",
+    "pyrefly",
+    "pytype",
+    "ty",
+)
 
 
 def read_api_surface(repo_root: Optional[Path] = None) -> dict[str, object]:
@@ -109,7 +118,7 @@ def read_packaging_state(repo_root: Optional[Path] = None) -> dict[str, object]:
 
     Intentionally string-sniffing rather than TOML-parsing — the validator
     needs to know whether markers like ``[project]``, ``[project.scripts]``,
-    and ``pyright``/``mypy`` are present, not their full resolved values.
+    and type-checker tool sections are present, not their full resolved values.
     """
     root = repo_root or _REPO_ROOT
     pyproject = root / "pyproject.toml"
@@ -118,8 +127,7 @@ def read_packaging_state(repo_root: Optional[Path] = None) -> dict[str, object]:
             "pyproject_exists": False,
             "has_project_table": False,
             "has_project_scripts": False,
-            "uses_pyright": False,
-            "uses_mypy": False,
+            "type_checkers": [],
             "cli_script_entry": None,
         }
     text = pyproject.read_text(encoding="utf-8")
@@ -128,12 +136,14 @@ def read_packaging_state(repo_root: Optional[Path] = None) -> dict[str, object]:
     if m:
         cli_entry = m.group(1)
     cli_module_exists = (root / "src" / "alfred" / "cli.py").is_file()
+    type_checkers = [
+        tool for tool in _SUPPORTED_TYPE_CHECKERS if f"[tool.{tool}]" in text
+    ]
     return {
         "pyproject_exists": True,
         "has_project_table": "[project]" in text,
         "has_project_scripts": "[project.scripts]" in text,
-        "uses_pyright": "pyright" in text,
-        "uses_mypy": re.search(r"\bmypy\b", text) is not None,
+        "type_checkers": type_checkers,
         "cli_script_entry": cli_entry,
         "cli_module_exists": cli_module_exists,
     }
@@ -142,12 +152,14 @@ def read_packaging_state(repo_root: Optional[Path] = None) -> dict[str, object]:
 def read_type_checkers(repo_root: Optional[Path] = None) -> list[str]:
     """Return the configured static type checkers inferred from pyproject.toml."""
     state = read_packaging_state(repo_root)
-    configured: list[str] = []
-    if bool(state["uses_pyright"]):
-        configured.append("pyright")
-    if bool(state["uses_mypy"]):
-        configured.append("mypy")
-    return configured
+    configured = state.get("type_checkers", [])
+    assert isinstance(configured, list)
+    return [tool for tool in configured if isinstance(tool, str)]
+
+
+def read_supported_type_checkers() -> list[str]:
+    """Return the stable list of type checkers recognized by repo-fact tooling."""
+    return list(_SUPPORTED_TYPE_CHECKERS)
 
 
 def read_reference_documents(repo_root: Optional[Path] = None) -> list[str]:

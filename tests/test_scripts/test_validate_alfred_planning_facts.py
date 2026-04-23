@@ -77,6 +77,25 @@ def _build_partial_state_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
+_TYPE_CHECKER_TOOL_CONFIGS = {
+    "basedpyright": "[tool.basedpyright]\n",
+    "mypy": "[tool.mypy]\nstrict = true\n",
+    "pyright": "[tool.pyright]\n",
+}
+_TYPE_CHECKER_CASES = (
+    ("pyright", "mypy"),
+    ("basedpyright", "pyright"),
+)
+
+
+def _build_type_checker_repo(tmp_path: Path, configured_tool: str) -> Path:
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'alfred'\n\n" + _TYPE_CHECKER_TOOL_CONFIGS[configured_tool],
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
 # ---------------------------------------------------------------------------
 # Path existence checks (R2: invented module paths)
 # ---------------------------------------------------------------------------
@@ -173,49 +192,96 @@ def test_does_not_flag_bare_role_word_executor() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Type checker check (R6: unexpected type-checker claim)
+# Type checker checks (R6: unexpected type-checker claim)
 # ---------------------------------------------------------------------------
 
 
-def test_flags_mypy_in_current_state() -> None:
-    md = _wrap_current_state("Type checking is handled by mypy.")
-    findings = validate_current_state_facts(md)
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_flags_unconfigured_type_checker_in_current_state(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
+    md = _wrap_current_state(f"Type checking is handled by {unexpected_tool}.")
+    findings = validate_current_state_facts(md, repo_root=repo_root)
     tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
     assert tooling
-    assert tooling[0].finding_object.claimed_tool == "mypy"
-    assert tooling[0].finding_object.allowed_tool == "pyright"
+    assert tooling[0].finding_object.claimed_tool == unexpected_tool
+    assert tooling[0].finding_object.allowed_tool == configured_tool
 
 
-def test_does_not_flag_negated_mypy_mention() -> None:
-    md = _wrap_current_state("Note: mypy is not used; the repo uses pyright.")
-    findings = validate_current_state_facts(md)
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_does_not_flag_negated_unconfigured_type_checker_mention(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
+    md = _wrap_current_state(
+        f"Note: {unexpected_tool} is not used; the repo uses {configured_tool}."
+    )
+    findings = validate_current_state_facts(md, repo_root=repo_root)
     tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
     assert not tooling
 
 
-def test_does_not_flag_mypy_described_as_hard_violation() -> None:
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_does_not_flag_unconfigured_type_checker_described_as_hard_violation(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
     md = _wrap_current_state(
-        "Type checking uses `pyright`. Introducing `mypy` is a hard violation."
+        f"Type checking uses `{configured_tool}`. Introducing `{unexpected_tool}` is a hard violation."
     )
-    findings = validate_current_state_facts(md)
+    findings = validate_current_state_facts(md, repo_root=repo_root)
     tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
     assert not tooling
 
 
-def test_does_not_flag_mypy_described_as_forbidden() -> None:
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_does_not_flag_unconfigured_type_checker_described_as_forbidden(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
     md = _wrap_current_state(
-        "The `mypy` tool is forbidden by hard rule; the repo uses `pyright`."
+        f"The `{unexpected_tool}` tool is forbidden by hard rule; the repo uses `{configured_tool}`."
     )
-    findings = validate_current_state_facts(md)
+    findings = validate_current_state_facts(md, repo_root=repo_root)
     tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
     assert not tooling
 
 
-def test_does_not_flag_markdown_formatted_negated_mypy_mention() -> None:
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_does_not_flag_markdown_formatted_negated_unconfigured_type_checker(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
     md = _wrap_current_state(
-        "Type checker: `pyright` (`mypy` is **not** in use and must not be referenced)."
+        f"Type checker: `{configured_tool}` (`{unexpected_tool}` is **not** in use and must not be referenced)."
     )
-    findings = validate_current_state_facts(md)
+    findings = validate_current_state_facts(md, repo_root=repo_root)
+    tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
+    assert not tooling
+
+
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_does_not_flag_shorthand_negated_unconfigured_type_checker(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
+    md = _wrap_current_state(
+        f"Alfred canonical tooling: `{configured_tool}` for type checking; no `{unexpected_tool}`."
+    )
+    findings = validate_current_state_facts(md, repo_root=repo_root)
     tooling = [f for f in findings if f.category == ClaimCategory.CURRENT_TOOLING]
     assert not tooling
 
@@ -335,13 +401,13 @@ def test_broken_draft_fixture_fails() -> None:
         ## WHAT EXISTS TODAY
         FastAPI lives in `src/alfred/api/main.py` with 5 endpoints.
         Agents include planner, executor, reviewer, and summariser.
-        Type checking is via mypy.
+        Type checking is via basedpyright.
         The `src/alfred/rag/` and `src/alfred/state/` packages handle retrieval and persistence.
         """
     )
     errors = validate(broken, expected_date="2026-04-20")
     # R1 (date), R2 (state), R3 (api/main.py), R4 (5 endpoints), R5 (roster),
-    # R6 (mypy), R7 (rag/state).
+    # R6 (unexpected type checker), R7 (rag/state).
     assert len(errors) >= 6
 
 
@@ -359,7 +425,7 @@ def test_correct_current_state_claims_pass(clean_body: str) -> None:
     # Metadata fields are present but no expected_* args given, so no
     # path/roster/tooling error should fire on a clean body.
     assert not any(
-        any(key in e for key in ("does not exist", "mypy", "executor"))
+        any(key in e for key in ("does not exist", "type-checking toolchain", "executor"))
         for e in errors
     )
 
@@ -678,74 +744,110 @@ def test_schema_as_package_passes() -> None:
     assert not placement, "Package-style schema path must not produce a PLACEMENT finding"
 
 
-def test_mypy_in_future_task_flagged() -> None:
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_unconfigured_type_checker_in_future_task_flagged(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
     md = _wrap_future_tasks(
         "### Task 3 — Add type checking\n"
-        "Integrate mypy into the CI pipeline.\n"
-        "Tests: mypy passes on the src/ tree."
+        f"Integrate {unexpected_tool} into the CI pipeline.\n"
+        f"Tests: {unexpected_tool} passes on the src/ tree."
     )
-    findings = validate_future_task_realism(md)
+    findings = validate_future_task_realism(md, repo_root=repo_root)
     hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
-    assert hard_rule, "Expected HARD_RULE finding for `mypy` in future task"
-    assert "`mypy`" in hard_rule[0].evidence
+    assert hard_rule, "Expected HARD_RULE finding for an unexpected type checker in future task"
+    assert f"`{unexpected_tool}`" in hard_rule[0].evidence
 
 
-def test_negated_mypy_in_future_task_passes() -> None:
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_negated_unconfigured_type_checker_in_future_task_passes(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
     md = _wrap_future_tasks(
         "### Task 3 — Keep the type-checking policy consistent\n"
-        "Keep pyright as the only type checker; do not add mypy anywhere.\n"
-        "Tests: pyright exits 0 in CI."
+        f"Keep {configured_tool} as the only type checker; do not add {unexpected_tool} anywhere.\n"
+        f"Tests: {configured_tool} exits 0 in CI."
     )
-    findings = validate_future_task_realism(md)
+    findings = validate_future_task_realism(md, repo_root=repo_root)
     hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
-    assert not hard_rule, "Prohibiting `mypy` must not produce a HARD_RULE finding"
+    assert not hard_rule, "Prohibiting an unconfigured type checker must not produce a HARD_RULE finding"
 
 
-def test_mypy_audit_cleanup_in_future_task_passes() -> None:
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_type_checker_audit_cleanup_in_future_task_passes(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
     md = _wrap_future_tasks(
         "### Task 3 — Clean stale tooling references\n"
-        "Audit README content and remove stale references to mypy or `[tool.mypy]`.\n"
-        "Tests: `rg -n \"mypy\" README.md docs/ pyproject.toml` only reports approved prohibitions."
+        f"Audit README content and remove stale references to {unexpected_tool} or `[tool.{unexpected_tool}]`.\n"
+        f"Tests: `rg -n \"{unexpected_tool}\" README.md docs/ pyproject.toml` only reports approved prohibitions."
     )
-    findings = validate_future_task_realism(md)
+    findings = validate_future_task_realism(md, repo_root=repo_root)
     hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
-    assert not hard_rule, "Audit and removal work around `mypy` must be allowed"
+    assert not hard_rule, "Audit and removal work around an unconfigured type checker must be allowed"
 
 
-def test_bare_mypy_mention_in_out_of_scope_bullet_passes() -> None:
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_bare_unconfigured_type_checker_mention_in_out_of_scope_bullet_passes(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
     md = _wrap_future_tasks(
         "### Task 3 — Define scope\n"
         "Out of scope:\n"
-        "- `mypy` or any type-checker other than `pyright`.\n"
+        f"- `{unexpected_tool}` or any type-checker other than `{configured_tool}`.\n"
         "Tests: scope section is reviewed."
     )
-    findings = validate_future_task_realism(md)
+    findings = validate_future_task_realism(md, repo_root=repo_root)
     hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
-    assert not hard_rule, "Bare `mypy` listed as out-of-scope must not trigger HARD_RULE"
+    assert not hard_rule, "Bare out-of-scope type-checker mention must not trigger HARD_RULE"
 
 
-def test_mypy_command_in_future_task_flagged() -> None:
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_unconfigured_type_checker_command_in_future_task_flagged(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
     md = _wrap_future_tasks(
         "### Task 3 — Add type checking\n"
         "Verification commands:\n"
         "```bash\n"
-        "mypy src/\n"
+        f"{unexpected_tool} src/\n"
         "```\n"
     )
-    findings = validate_future_task_realism(md)
+    findings = validate_future_task_realism(md, repo_root=repo_root)
     hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
-    assert hard_rule, "Explicit mypy command should count as introducing an absent tool"
+    assert hard_rule, "Explicit type-checker command should count as introducing an absent tool"
 
 
-def test_pyright_in_future_task_passes() -> None:
+@pytest.mark.parametrize(("configured_tool", "unexpected_tool"), _TYPE_CHECKER_CASES)
+def test_configured_type_checker_in_future_task_passes(
+    tmp_path: Path,
+    configured_tool: str,
+    unexpected_tool: str,
+) -> None:
+    repo_root = _build_type_checker_repo(tmp_path, configured_tool)
     md = _wrap_future_tasks(
         "### Task 3 — Add type checking\n"
-        "Ensure pyright passes on the src/ tree with strict mode.\n"
-        "Tests: pyright exits 0 in CI."
+        f"Ensure {configured_tool} passes on the src/ tree with strict mode.\n"
+        f"Tests: {configured_tool} exits 0 in CI."
     )
-    findings = validate_future_task_realism(md)
+    findings = validate_future_task_realism(md, repo_root=repo_root)
     hard_rule = [f for f in findings if f.category == ClaimCategory.HARD_RULE]
-    assert not hard_rule, "pyright reference must not produce a HARD_RULE finding"
+    assert not hard_rule, "Configured type-checker reference must not produce a HARD_RULE finding"
 
 
 def test_docker_in_future_task_flagged() -> None:
