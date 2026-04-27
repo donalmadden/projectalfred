@@ -224,7 +224,7 @@ grep -E "README\.md|CHARTER\.md|handovers|ALFRED_HANDOVER_1" \
 
 **Expected:**
 - File exists at `docs/active/DEMO_PROJECT_LAYOUT.md`
-- All four required path elements (`README.md`, `docs/active/CHARTER.md`, `docs/handovers/`, `docs/canonical/ALFRED_HANDOVER_1.md`) are named
+- All four required path elements (`README.md`, `docs/active/CHARTER.md`, `docs/handovers/`, `docs/handovers/ALFRED_HANDOVER_1.md`) are named
 - The `.gitkeep` question is answered explicitly
 - The `docs/CURRENT_STATE.md` question is answered explicitly (include or explicitly defer)
 
@@ -391,11 +391,11 @@ python scripts/check_manifest.py
 - Manifest hygiene held: `scripts/check_manifest.py` reports `No drift detected` after the new `docs/active/` entries were registered.
 
 **What was harder than expected:**
-- The CHARTER content question forked: Phase 0 sign-off was stamped against `docs/active/CHARTER.md`, while the Phase 1 plan required a charter at `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md`. Two charter files now exist (the older one converted to a redirector) — see deviation below. Cleaner would have been a single rename in Phase 0 or an explicit alias in the Phase 1 spec.
-- The `## TASK 2` "Expected" verification line in this handover named `docs/canonical/ALFRED_HANDOVER_1.md` while every other reference (including the Phase 0 freeze) named `docs/handovers/ALFRED_HANDOVER_1.md`. The layout doc followed Phase 0 freeze; the handover's Expected line is internally inconsistent and should be corrected if HANDOVER_8 is ever revised.
+- The CHARTER content question forked: Phase 0 sign-off was stamped against `docs/active/CHARTER.md`, while the Phase 1 plan required a charter at `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md`. Initially resolved by leaving the older file in place as a redirector; on review (2026-04-27) that was judged the wrong call — two competing entries in `docs/active/` blurred which charter was authoritative. Corrected by moving the older draft to `docs/archive/CUSTOMER_ONBOARDING_PORTAL_CHARTER_DRAFT.md`. Cleaner upstream would have been a single rename in Phase 0.
+- The `## TASK 2` "Expected" verification line originally named `docs/canonical/ALFRED_HANDOVER_1.md` while every other reference (including the Phase 0 freeze and the layout doc) named `docs/handovers/ALFRED_HANDOVER_1.md`. Corrected in-place on 2026-04-27 so the verification line now matches the rest of the corpus.
 
 **Decisions made during execution (deviations from this plan):**
-- **Retained `docs/active/CHARTER.md` as a redirector to the new `CUSTOMER_ONBOARDING_PORTAL_CHARTER.md`, instead of archiving it.** Why: the older CHARTER.md was already in the manifest and signed against in Phase 0; a redirector preserves the audit trail without leaving two competing canonical-charter candidates indexed. Approved: DM (in-session, 2026-04-27). Forward note: if `docs/active/` is ever swept to `docs/archive/`, the redirector should move with it and CUSTOMER_ONBOARDING_PORTAL_CHARTER.md remains the live charter.
+- **Archived the prior `docs/active/CHARTER.md` to `docs/archive/CUSTOMER_ONBOARDING_PORTAL_CHARTER_DRAFT.md` (lifecycle: archive, indexed: false, citable: false).** Why: an earlier in-session decision retained it as an `active_brief` redirector, but on review that left two charter entries indexed under `docs/active/` and risked the planner citing the superseded text. Archiving makes the frozen Phase 1 charter the unambiguous authority while preserving the older draft for traceability. The `lifecycle_status: archive` flag excludes it from default generation and validation flows per `docs/DOCS_POLICY.md`. Approved: DM (in-session, 2026-04-27).
 - **`KICKOFF_HANDOVER_OUTLINE.md` and `DEMO_PROJECT_LAYOUT.md` use ASCII hyphens (`-`) in section headers instead of em-dashes (`—`).** Why: matches the verification regex in this handover and avoids unicode-collision risk in downstream tooling. Approved: implicit — no behavioural impact.
 
 **Forward plan:**

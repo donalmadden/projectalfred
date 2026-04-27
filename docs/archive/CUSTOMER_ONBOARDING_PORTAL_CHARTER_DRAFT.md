@@ -1,6 +1,6 @@
-# Customer Onboarding Portal — Project Charter
+# Customer Onboarding Portal — Project Charter (Historical Draft)
 
-> **Historical draft.** Superseded for Phase 1 execution by [CUSTOMER_ONBOARDING_PORTAL_CHARTER.md](./CUSTOMER_ONBOARDING_PORTAL_CHARTER.md). Retained here for reference because the frozen charter now lives at the explicit Phase 1 path.
+> **Archived.** Superseded by [docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md](../active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md), the frozen Phase 1 charter. Retained for traceability only; not part of any active generation or validation flow.
 
 ---
 

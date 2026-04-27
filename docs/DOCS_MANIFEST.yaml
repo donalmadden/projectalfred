@@ -203,13 +203,13 @@ documents:
     authoritative: false
     notes: Frozen Phase 1 outline for the kickoff handover, board-seeding task, and approval-gate wording.
 
-  - current_path: docs/active/CHARTER.md
-    kind: active_brief
-    lifecycle_status: active
-    indexed: true
-    citable: true
+  - current_path: docs/archive/CUSTOMER_ONBOARDING_PORTAL_CHARTER_DRAFT.md
+    kind: supporting_history
+    lifecycle_status: archive
+    indexed: false
+    citable: false
     authoritative: false
-    notes: Historical draft Customer Onboarding Portal charter retained for reference; superseded in practice by docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md.
+    notes: Superseded draft of the Customer Onboarding Portal charter. Frozen Phase 1 charter lives at docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md; this copy is retained for traceability only.
 
   - current_path: docs/active/OPERATIONALISE_ALFRED.md
     kind: active_brief
