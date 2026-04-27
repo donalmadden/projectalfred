@@ -182,7 +182,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=SOURCE_PATH.relative_to(REPO_ROOT),
         help=(
             "Historical handover to use for continuity "
-            "(default: docs/canonical/ALFRED_HANDOVER_7.md)"
+            "(default: docs/canonical/ALFRED_HANDOVER_8.md)"
         ),
     )
     parser.add_argument(
@@ -191,7 +191,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=OUTPUT_PATH.relative_to(REPO_ROOT),
         help=(
             "Canonical output path to write on success "
-            "(default: docs/canonical/ALFRED_HANDOVER_8.md)"
+            "(default: docs/canonical/ALFRED_HANDOVER_9.md)"
         ),
     )
     parser.add_argument(
@@ -200,7 +200,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default=FAILED_OUTPUT_PATH.relative_to(REPO_ROOT),
         help=(
             "Where to write a failed candidate when validation blocks promotion "
-            "(default: docs/archive/ALFRED_HANDOVER_8_FAILED_CANDIDATE.md)"
+            "(default: docs/archive/ALFRED_HANDOVER_9_FAILED_CANDIDATE.md)"
         ),
     )
     parser.add_argument(
@@ -520,7 +520,7 @@ def load_historical_context(
     if mode == "full":
         return (
             "Update the next canonical handover so it matches the live repository "
-            "today. Preserve the new handover identity (`ALFRED_HANDOVER_8`) and "
+            "today. Preserve the new handover identity (`ALFRED_HANDOVER_9`) and "
             "treat the previous canonical handover as continuity input, but prefer "
             "repo facts, validators, and git history over any stale prose.\n\n"
             f"{DEMO_PLAN_GROUNDING}\n\n"
