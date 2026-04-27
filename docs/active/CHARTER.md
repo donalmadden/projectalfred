@@ -1,6 +1,6 @@
 # Customer Onboarding Portal — Project Charter
 
-> **Draft.** Demo-scenario charter for the Alfred blank-project kickoff demo. Pending project-lead ratification per [ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md](./ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md).
+> **Historical draft.** Superseded for Phase 1 execution by [CUSTOMER_ONBOARDING_PORTAL_CHARTER.md](./CUSTOMER_ONBOARDING_PORTAL_CHARTER.md). Retained here for reference because the frozen charter now lives at the explicit Phase 1 path.
 
 ---
 

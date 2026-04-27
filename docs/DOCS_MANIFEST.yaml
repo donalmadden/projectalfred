@@ -179,13 +179,37 @@ documents:
     authoritative: false
     notes: Phase 0 freeze record for the blank-project kickoff demo; locks scenario, project shape, board target, success criterion, and narrated arc.
 
+  - current_path: docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Frozen Phase 1 kickoff charter for the blank-project demo; source text for the demo project's docs/CHARTER.md.
+
+  - current_path: docs/active/DEMO_PROJECT_LAYOUT.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Frozen Phase 1 layout spec for the demo project's initial docs surface and first persisted handover path.
+
+  - current_path: docs/active/KICKOFF_HANDOVER_OUTLINE.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Frozen Phase 1 outline for the kickoff handover, board-seeding task, and approval-gate wording.
+
   - current_path: docs/active/CHARTER.md
     kind: active_brief
     lifecycle_status: active
     indexed: true
     citable: true
     authoritative: false
-    notes: Draft Customer Onboarding Portal charter for the blank-project kickoff demo; pending ratification before Phase 1 begins.
+    notes: Historical draft Customer Onboarding Portal charter retained for reference; superseded in practice by docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md.
 
   - current_path: docs/active/OPERATIONALISE_ALFRED.md
     kind: active_brief
