@@ -386,13 +386,17 @@ python scripts/check_manifest.py
 > **Instruction to executor:** After implementation, fill in this section before closing the work. The next planner or reviewer must be able to cold-start from this artifact alone.
 
 **What worked:**
-- *executor to fill*
+- The two-source authoritative grounding (demo plan + Phase 0 freeze) gave Task 1–3 unambiguous inputs; no scope drift into Phases 2–5 occurred during drafting.
+- Treating each Phase 1 deliverable as a frozen *spec* document rather than an example produced clean handoffs to Phase 2 — `DEMO_PROJECT_LAYOUT.md` reads as a workspace-init contract, `KICKOFF_HANDOVER_OUTLINE.md` reads as a runtime structure contract.
+- Manifest hygiene held: `scripts/check_manifest.py` reports `No drift detected` after the new `docs/active/` entries were registered.
 
 **What was harder than expected:**
-- *executor to fill*
+- The CHARTER content question forked: Phase 0 sign-off was stamped against `docs/active/CHARTER.md`, while the Phase 1 plan required a charter at `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md`. Two charter files now exist (the older one converted to a redirector) — see deviation below. Cleaner would have been a single rename in Phase 0 or an explicit alias in the Phase 1 spec.
+- The `## TASK 2` "Expected" verification line in this handover named `docs/canonical/ALFRED_HANDOVER_1.md` while every other reference (including the Phase 0 freeze) named `docs/handovers/ALFRED_HANDOVER_1.md`. The layout doc followed Phase 0 freeze; the handover's Expected line is internally inconsistent and should be corrected if HANDOVER_8 is ever revised.
 
 **Decisions made during execution (deviations from this plan):**
-- *executor to fill — each deviation must include: what changed, why, who approved*
+- **Retained `docs/active/CHARTER.md` as a redirector to the new `CUSTOMER_ONBOARDING_PORTAL_CHARTER.md`, instead of archiving it.** Why: the older CHARTER.md was already in the manifest and signed against in Phase 0; a redirector preserves the audit trail without leaving two competing canonical-charter candidates indexed. Approved: DM (in-session, 2026-04-27). Forward note: if `docs/active/` is ever swept to `docs/archive/`, the redirector should move with it and CUSTOMER_ONBOARDING_PORTAL_CHARTER.md remains the live charter.
+- **`KICKOFF_HANDOVER_OUTLINE.md` and `DEMO_PROJECT_LAYOUT.md` use ASCII hyphens (`-`) in section headers instead of em-dashes (`—`).** Why: matches the verification regex in this handover and avoids unicode-collision risk in downstream tooling. Approved: implicit — no behavioural impact.
 
 **Forward plan:**
 - Phase 2: Close the execution path around the orchestrator — narrow harness that takes a compiled `HandoverDocument` and runs it through `orchestrate(...)` targeting the demo project workspace

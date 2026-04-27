@@ -1,18 +1,18 @@
-"""Generate the canonical handover that plans Phase 1 of the blank-project kickoff demo.
+"""Generate the canonical handover that plans Phase 2 of the blank-project kickoff demo.
 
-Follows the same validated canonical-generation path as the prior Phase 7
-generator, but the planner is now grounded on two authoritative scope
-sources — `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` and
-`docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md` —
+Follows the same validated canonical-generation path as the prior Phase 1
+generator, but the planner is now grounded on three authoritative scope
+sources — the demo plan, the Phase 0 freeze record, and the Phase 1
+frozen specs (charter, demo-project layout, kickoff handover outline) —
 and seeded with the previous canonical handover
-(`docs/canonical/ALFRED_HANDOVER_7.md`) as continuity context only. The
-target output is `docs/canonical/ALFRED_HANDOVER_8.md`, written only after
+(`docs/canonical/ALFRED_HANDOVER_8.md`) as continuity context only. The
+target output is `docs/canonical/ALFRED_HANDOVER_9.md`, written only after
 the structural and grounding validators pass.
 
-Scope of the generated handover: Phase 1 of the demo plan only — lock the
-canonical kickoff handover shape (charter prompt, demo-project docs/
-layout, target handover outline, kickoff task, board-write checkpoint).
-Phases 2–5 of the demo plan (orchestrator harness, proposal persistence,
+Scope of the generated handover: Phase 2 of the demo plan only — close
+the orchestrated execution path with a narrow harness that takes a
+compiled `HandoverDocument` and runs it through `orchestrate(...)`
+targeting the demo project workspace. Phases 3–5 (proposal persistence,
 GitHub write path, rehearsal) are explicitly out of scope.
 """
 from __future__ import annotations
@@ -41,9 +41,9 @@ _LOCAL_PATH_RE = re.compile(
     r"`(?P<path>(?:docs|src|scripts|tests|configs|evals|\.github)/[A-Za-z0-9_./\-]+)`"
 )
 
-EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_8"
-EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_7"
-DISPLAY_TITLE = "Demo Plan Phase 1 — Lock Kickoff Handover Shape"
+EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_9"
+EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_8"
+DISPLAY_TITLE = "Demo Plan Phase 2 — Close Orchestrated Execution Path"
 SOURCE_FILENAME = f"{EXPECTED_PREVIOUS_HANDOVER}.md"
 FAILED_FILENAME = f"{EXPECTED_HANDOVER_ID}_FAILED_CANDIDATE.md"
 DEFAULT_CONTEXT_CHARS = 6000
@@ -51,6 +51,11 @@ DEFAULT_CONTEXT_CHARS = 6000
 DEMO_PLAN_PATH = REPO_ROOT / "docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md"
 DEMO_FROZEN_SCENARIO_PATH = (
     REPO_ROOT / "docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md"
+)
+DEMO_PHASE1_FROZEN_PATHS: tuple[Path, ...] = (
+    REPO_ROOT / "docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md",
+    REPO_ROOT / "docs/active/DEMO_PROJECT_LAYOUT.md",
+    REPO_ROOT / "docs/active/KICKOFF_HANDOVER_OUTLINE.md",
 )
 
 
@@ -98,33 +103,47 @@ _DOC_PATH_OVERRIDES = {
 }
 
 SPRINT_GOAL = (
-    "Generate the canonical handover that plans Phase 1 of the blank-project "
-    "kickoff demo plan. Phase 0 is already frozen and ratified — the demo "
-    "scenario (Customer Onboarding Portal), demo-project shape, blank "
-    "GitHub Project board target, 6–8 visible draft items success criterion, "
-    "and the narrated arc are locked. This handover must execute Phase 1 "
-    "only: (a) freeze the exact kickoff charter content the demo will use as "
-    "Alfred input, (b) freeze the target demo-project docs/ layout, "
-    "(c) freeze the target outline of the kickoff handover Alfred will "
-    "generate for the demo, (d) define the specific kickoff task whose "
-    "execution seeds the blank GitHub Project board, and (e) define the "
-    "checkpoint that gates the board-write step. Phase 2–5 deliverables "
-    "(orchestrator harness, proposal persistence, GitHub write path, "
-    "rehearsal runbook) are explicitly out of scope for this handover."
+    "Generate the canonical handover that plans Phase 2 of the blank-project "
+    "kickoff demo plan. Phase 0 (scenario freeze) and Phase 1 (kickoff "
+    "handover shape, demo-project layout, charter content, board-seeding "
+    "task spec, approval-gate wording) are already frozen and ratified. "
+    "This handover must execute Phase 2 only: close the narrow execution "
+    "harness that takes a compiled `HandoverDocument` for the demo "
+    "project's kickoff handover and runs it through `orchestrate(...)` "
+    "against the demo project workspace, halting cleanly at the approval "
+    "gate before any board write. Concretely the handover must specify: "
+    "(a) where the harness lives (script vs CLI subcommand) and how it is "
+    "invoked, (b) how the demo-project workspace is initialised from the "
+    "Phase 1 layout spec, (c) how the approved kickoff handover is "
+    "persisted, compiled, and dispatched, (d) how the run halts at the "
+    "approval gate and surfaces the `StoryProposal` items for review, and "
+    "(e) what observable evidence proves Phase 2 is complete prior to "
+    "Phase 3. Phase 3–5 deliverables (proposal persistence schema, "
+    "GitHub Project V2 write path, rehearsal runbook) are explicitly out "
+    "of scope for this handover."
 )
 
 DEMO_PLAN_GROUNDING = (
     "Authoritative scope sources for this handover (full text included "
     "below in the planner context):\n"
     "- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` — multi-phase "
-    "build plan; this handover plans Phase 1 only.\n"
+    "build plan; this handover plans Phase 2 only.\n"
     "- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md` "
     "— Phase 0 freeze record (ratified). All five Phase 0 decisions are "
     "locked and may not be revisited.\n"
-    "Treat the contents of those two docs as the source of truth for scope. "
-    "Do not invent deliverables outside Phase 1. Do not revisit Phase 0 "
-    "freeze decisions. The previously-prominent Phase 8 portfolio-polish "
-    "scope is superseded by the demo plan and must not be carried forward."
+    "- `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md` — frozen Phase 1 "
+    "charter content the harness will feed into Alfred at runtime.\n"
+    "- `docs/active/DEMO_PROJECT_LAYOUT.md` — frozen Phase 1 spec for the "
+    "demo project's initial filesystem shape; the harness must initialise "
+    "the workspace to match this layout exactly.\n"
+    "- `docs/active/KICKOFF_HANDOVER_OUTLINE.md` — frozen Phase 1 spec for "
+    "the kickoff handover Alfred must produce at runtime, including the "
+    "board-seeding task (`TASK-SEED-BOARD-001`, `story_generator`) and the "
+    "verbatim approval-gate wording.\n"
+    "Treat the contents of those docs as the source of truth for scope. "
+    "Do not invent deliverables outside Phase 2. Do not revisit Phase 0 "
+    "freeze decisions or Phase 1 frozen specs. Do not implement the "
+    "GitHub Project V2 write path — that is Phase 4."
 )
 
 
@@ -419,12 +438,13 @@ def normalise_generated_markdown(markdown: str) -> str:
 
 
 def load_demo_plan_context() -> str:
-    """Return the full text of the demo plan + Phase 0 freeze as a labeled scope block.
+    """Return the full text of the demo plan + Phase 0 freeze + Phase 1 specs as a labeled scope block.
 
     This is the planner's authoritative scope input. Unlike historical
     continuity context, it is not truncated — the planner needs the full
-    Phase 1 deliverables and the full Phase 0 freeze decisions to produce
-    a faithful canonical handover.
+    Phase 2 deliverables, the full Phase 0 freeze decisions, and the full
+    Phase 1 frozen specs (charter, demo-project layout, kickoff handover
+    outline) to produce a faithful canonical handover.
     """
     plan_text = (
         DEMO_PLAN_PATH.read_text(encoding="utf-8") if DEMO_PLAN_PATH.is_file() else ""
@@ -434,15 +454,25 @@ def load_demo_plan_context() -> str:
         if DEMO_FROZEN_SCENARIO_PATH.is_file()
         else ""
     )
-    if not plan_text and not frozen_text:
+    phase1_specs: list[tuple[str, str]] = []
+    for spec_path in DEMO_PHASE1_FROZEN_PATHS:
+        if spec_path.is_file():
+            phase1_specs.append(
+                (
+                    spec_path.relative_to(REPO_ROOT).as_posix(),
+                    spec_path.read_text(encoding="utf-8").rstrip(),
+                )
+            )
+    if not plan_text and not frozen_text and not phase1_specs:
         return ""
 
     blocks: list[str] = [
-        "===== AUTHORITATIVE PHASE 1 SCOPE — DO NOT TREAT AS HISTORICAL CONTEXT =====",
-        "The two documents below define the source of truth for what this "
+        "===== AUTHORITATIVE PHASE 2 SCOPE — DO NOT TREAT AS HISTORICAL CONTEXT =====",
+        "The documents below define the source of truth for what this "
         "handover must lock down. Read them as the scope brief, not as "
-        "historical narrative. Phase 0 is already ratified; this handover "
-        "executes Phase 1 only.",
+        "historical narrative. Phase 0 (scenario freeze) and Phase 1 "
+        "(kickoff handover shape, charter, demo-project layout) are "
+        "already ratified; this handover executes Phase 2 only.",
     ]
     if frozen_text:
         blocks.extend(
@@ -462,7 +492,16 @@ def load_demo_plan_context() -> str:
                 "----- END DEMO PLAN -----",
             ]
         )
-    blocks.append("===== END AUTHORITATIVE PHASE 1 SCOPE =====")
+    for rel_path, body in phase1_specs:
+        blocks.extend(
+            [
+                "",
+                f"----- BEGIN {rel_path} -----",
+                body,
+                f"----- END {rel_path} -----",
+            ]
+        )
+    blocks.append("===== END AUTHORITATIVE PHASE 2 SCOPE =====")
     return "\n".join(blocks)
 
 
