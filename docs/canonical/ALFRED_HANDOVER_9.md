@@ -410,15 +410,28 @@ grep ALFRED_HANDOVER_9 docs/DOCS_MANIFEST.yaml
 > **Instruction to executor:** After implementation, fill in this section before closing the work. The next planner or reviewer must be able to cold-start from this artifact alone.
 
 **What worked:**
-- *executor to fill*
+- The split into `scripts/init_demo_workspace.py` and `scripts/run_kickoff_demo.py` (vs. the failed candidate's single combined script) kept each module under one responsibility and made test isolation trivial. Idempotency in the initialiser was straightforward because the spec is small enough to verify by content equality.
+- The compiler (`run_compiler` via `alfred.agents.compiler`) extracted `TASK-SEED-BOARD-001` correctly on the first live run from the explicit `## TASK TASK-SEED-BOARD-001 — Generate Kickoff Backlog` markdown block plus an inline `**Agent type:** story_generator` line. No retry loop or revised prompt was needed.
+- Dependency-injecting the compile and inner-story-runner functions into `run_demo` let the entire harness be exercised end-to-end in unit tests without any LLM credentials. The live LLM run on `/tmp/cop_demo` produced 8 structured `Story` items with full title/description/acceptance_criteria/story_points fields, the verbatim approval prompt, and a clean exit 0.
+- All five methodology properties held: the document was the protocol, the approval gate was the checkpoint (no board write without human approval), reasoning agents (story generator) ran under their schemas, the post-mortem (this section) is embedded in the artifact, and the run is fully reconstructable from the workspace state on a cold start.
 
 **What was harder than expected:**
-- *executor to fill*
+- The orchestrator's default `_story_runner` discards structured `StoryGeneratorOutput`: only a count summary survives in `TaskResult.output_summary`. The Phase 2 acceptance criterion ("surface structured `StoryProposal` items at the gate") therefore could not be met by reading `task.result` after orchestration. This was solved without core changes — see deviations below — but it is a real friction point that Phase 3 should address explicitly when designing the persistence schema.
+- `AlfredConfig.llm.model` defaults to the empty string. The first live run failed at the Anthropic adapter with `model: String should have at least 1 character`. The harness now sets a default in `default_demo_config()`, but the broader pattern (a default config that cannot actually drive an LLM call without further setup) is a footgun for future demo callers and should be tightened.
+- The pre-existing failing tests in `tests/test_scripts/test_generate_next_canonical_handover.py` (3 failures, stale assertions about Phase 1 sprint goal and HANDOVER_8 source path) are unrelated to Phase 2 work but make a "full pytest" reading noisy. They should be fixed during a future docs-tooling phase.
 
 **Decisions made during execution (deviations from this plan):**
-- *executor to fill — each deviation must include: what changed, why, who approved*
+- **Capture structured story output via `set_agent_runner`.** Reason: the orchestrator's default `_story_runner` only persists a summary string, but the approval gate requires structured fields. The harness installs a custom `story_generator` runner via the documented `set_agent_runner` hook (the same hook the orchestrator's own test suite uses). The runner mirrors the default's input construction and call to `run_story_generator`, then stashes the structured `StoryGeneratorOutput` into a closure list before returning the same `TaskResult` shape. The orchestrator remains the dispatcher (HARD RULE 4 satisfied); the captured output is a side-channel for human display only. Approved by: human reviewer at CHECKPOINT-2.
+- **Set `AlfredConfig.llm.model = "claude-sonnet-4-6"` in `default_demo_config`.** Reason: the schema default is empty and the first live run died at the Anthropic adapter validation. Phase 2 doesn't introduce a config-resolution pattern; the harness simply provides a working default for the demo path. Approved by: human reviewer at CHECKPOINT-2.
+- **Manifest registration for scripts is a no-op.** Reason: `docs/DOCS_MANIFEST.yaml` and `docs/DOCS_POLICY.md` cover markdown lifecycle only — no `scripts/` entries exist for any sibling script (`generate_next_canonical_handover.py`, `dogfood_run.py`, etc.). Task 3 step 2 was therefore satisfied by reading the policy and concluding no entry is required. Approved by: human reviewer at CHECKPOINT-2.
 
 **Forward plan:**
-- *executor to fill — Phase 3 scope: proposal-persistence schema and structured approval-record linkage*
+
+Phase 3 scope is proposal-persistence schema and approval-record linkage. The captured `StoryGeneratorOutput` from Phase 2's harness already carries the structured fields the persistence schema needs (title, description, acceptance_criteria, story_points, plus rubric metadata) — Phase 3 can lift that shape directly into a Pydantic `StoryProposal` schema and an SQLite table that links each proposal to a handover_id, an approval verdict, and a board-write outcome (Phase 4). Two orchestrator-level gaps surfaced in Phase 2 that Phase 3 should address while it has the schema layer open:
+
+1. The orchestrator's `_story_runner` should persist structured output back onto `TaskResult` (e.g., a typed `result.payload` slot), not only a count summary, so consumers don't need a `set_agent_runner` side-channel.
+2. `AlfredConfig` should fail fast when an LLM-dependent code path is invoked with an empty model string, rather than producing a runtime 400 from the provider adapter.
+
+Phase 4 (GitHub Project V2 write path) and Phase 5 (rehearsal runbook) remain out of scope. The structured-proposal capture pattern from Phase 2 is the natural anchor for Phase 4's board-write gate: the same captured list can drive the actual mutation calls once the human approval is recorded.
 
 **next_handover_id:** ALFRED_HANDOVER_10
