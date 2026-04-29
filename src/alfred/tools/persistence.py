@@ -12,6 +12,7 @@ db_path.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -20,6 +21,7 @@ from typing import Optional
 
 from alfred.schemas.agent import VelocityRecord
 from alfred.schemas.checkpoint import Verdict
+from alfred.schemas.story_proposal import ApprovalStatus, StoryProposalRecord
 
 _SCHEMA = [
     """
@@ -63,6 +65,26 @@ _SCHEMA = [
         decided_at TEXT,
         decision TEXT
     )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS story_proposals (
+        proposed_story_id TEXT PRIMARY KEY,
+        handover_id TEXT NOT NULL,
+        task_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        acceptance_criteria_json TEXT NOT NULL,
+        story_points INTEGER NOT NULL,
+        approval_status TEXT NOT NULL DEFAULT 'pending',
+        approval_decision_id TEXT,
+        created_at TEXT NOT NULL,
+        approved_at TEXT,
+        written_at TEXT
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS ix_story_proposals_handover_task
+        ON story_proposals (handover_id, task_id)
     """,
 ]
 
@@ -294,4 +316,165 @@ def record_approval_decision(db_path: str, approval_id: str, decision: str) -> N
                 f"Approval '{approval_id}' already decided as {row['decision']}"
             )
 
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Story proposals (Phase 3 — proposed-story persistence)
+# ---------------------------------------------------------------------------
+#
+# Idempotency policy (open decision surfaced at CHECKPOINT-2):
+#
+#   The functions below are pure-insert / pure-update. ``proposed_story_id``
+#   is the PK; inserting a record whose id already exists raises a
+#   ``sqlite3.IntegrityError``. Repeated harness runs that re-invoke the
+#   story generator therefore *append* a new batch of rows by default
+#   (Option A), preserving regeneration history.
+#
+#   If an Option B "replace by (handover_id, task_id) batch" semantic is
+#   needed later, the orchestrator (Phase 3 Task 3) can call
+#   ``delete_story_proposals(db_path, handover_id, task_id)`` before
+#   inserting. That helper is intentionally NOT provided here yet; surface
+#   the policy choice in Task 3 once the orchestrator wiring makes the
+#   right call obvious.
+
+
+def _record_to_row(record: StoryProposalRecord) -> tuple:
+    return (
+        record.proposed_story_id,
+        record.handover_id,
+        record.task_id,
+        record.title,
+        record.description,
+        json.dumps(record.acceptance_criteria),
+        int(record.story_points),
+        record.approval_status,
+        record.approval_decision_id,
+        record.created_at.isoformat(),
+        record.approved_at.isoformat() if record.approved_at is not None else None,
+        record.written_at.isoformat() if record.written_at is not None else None,
+    )
+
+
+def _row_to_record(row: sqlite3.Row) -> StoryProposalRecord:
+    return StoryProposalRecord(
+        proposed_story_id=row["proposed_story_id"],
+        handover_id=row["handover_id"],
+        task_id=row["task_id"],
+        title=row["title"],
+        description=row["description"],
+        acceptance_criteria=json.loads(row["acceptance_criteria_json"]),
+        story_points=int(row["story_points"]),  # type: ignore[arg-type]
+        approval_status=row["approval_status"],
+        approval_decision_id=row["approval_decision_id"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        approved_at=(
+            datetime.fromisoformat(row["approved_at"])
+            if row["approved_at"] is not None
+            else None
+        ),
+        written_at=(
+            datetime.fromisoformat(row["written_at"])
+            if row["written_at"] is not None
+            else None
+        ),
+    )
+
+
+def insert_story_proposals(
+    db_path: str,
+    records: list[StoryProposalRecord],
+) -> None:
+    """Persist a batch of story proposal records.
+
+    Pure insert — duplicate ``proposed_story_id`` raises. Callers that
+    need replace-by-batch semantics should delete the matching rows
+    first (no helper provided yet; see module-level idempotency note).
+    """
+    if not records:
+        return
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        cur.executemany(
+            """
+            INSERT INTO story_proposals
+                (proposed_story_id, handover_id, task_id, title, description,
+                 acceptance_criteria_json, story_points, approval_status,
+                 approval_decision_id, created_at, approved_at, written_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [_record_to_row(r) for r in records],
+        )
+        conn.commit()
+
+
+def list_story_proposals(
+    db_path: str,
+    *,
+    handover_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+) -> list[StoryProposalRecord]:
+    """Return persisted story proposals, optionally filtered by linkage.
+
+    With no filter, returns every row (oldest first by ``created_at``).
+    Supplying ``handover_id`` / ``task_id`` narrows the query via the
+    composite index. Order is stable and deterministic so gate review
+    output is reproducible across pause/resume.
+    """
+    clauses: list[str] = []
+    params: list[str] = []
+    if handover_id is not None:
+        clauses.append("handover_id = ?")
+        params.append(handover_id)
+    if task_id is not None:
+        clauses.append("task_id = ?")
+        params.append(task_id)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    sql = f"""
+        SELECT proposed_story_id, handover_id, task_id, title, description,
+               acceptance_criteria_json, story_points, approval_status,
+               approval_decision_id, created_at, approved_at, written_at
+        FROM story_proposals
+        {where}
+        ORDER BY created_at ASC, proposed_story_id ASC
+    """
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        rows = cur.execute(sql, params).fetchall()
+    return [_row_to_record(r) for r in rows]
+
+
+def update_story_proposal_status(
+    db_path: str,
+    proposed_story_id: str,
+    status: ApprovalStatus,
+    *,
+    approval_decision_id: Optional[str] = None,
+) -> None:
+    """Transition a single proposal's approval status.
+
+    Sets ``approved_at`` when status becomes ``approved`` and
+    ``written_at`` when it becomes ``written`` (both via UTC now).
+    Raises ``ValueError`` if no row matches ``proposed_story_id``.
+    """
+    if status not in ("pending", "approved", "written"):
+        raise ValueError(f"Invalid story proposal status: {status!r}")
+
+    now = _now_iso()
+    set_clauses = ["approval_status = ?"]
+    params: list[Optional[str]] = [status]
+    if approval_decision_id is not None:
+        set_clauses.append("approval_decision_id = ?")
+        params.append(approval_decision_id)
+    if status == "approved":
+        set_clauses.append("approved_at = ?")
+        params.append(now)
+    elif status == "written":
+        set_clauses.append("written_at = ?")
+        params.append(now)
+    params.append(proposed_story_id)
+
+    sql = f"UPDATE story_proposals SET {', '.join(set_clauses)} WHERE proposed_story_id = ?"
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        cur.execute(sql, params)
+        if cur.rowcount == 0:
+            raise ValueError(f"Story proposal not found: {proposed_story_id}")
         conn.commit()
