@@ -235,6 +235,14 @@ documents:
     authoritative: false
     notes: Active record of promising but not yet canonized architecture/product-shape discussions, including docs-native Alfred and handovers as the versioned wiki spine.
 
+  - current_path: docs/active/HANDOVER_WORKFLOW_DISCUSSION.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Open discussion — structured, repeatable workflow for advancing the canonical-handover generator without frontier-model surgery. Park until demo plan Phase 5 closes, then revisit.
+
   - current_path: docs/active/FACTUAL_VALIDATOR_FUTURE_TASK_PLANNING_REALISM.md
     kind: active_brief
     lifecycle_status: active
