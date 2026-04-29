@@ -31,6 +31,6 @@ This document freezes the initial filesystem shape of the external demo project 
 
 - `docs/handovers/` is intentionally empty at kickoff.
 - No `.gitkeep` is part of the frozen layout. Phase 2's workspace initialiser must create `docs/handovers/` at runtime so the visible project shape remains identical to the Phase 0 freeze.
-- `docs/CURRENT_STATE.md` is not included in this demo slice. The kickoff handover's `## WHAT EXISTS TODAY` section is the explicit "what exists" anchor, so `CURRENT_STATE.md` remains deferred unless a later phase reopens that decision.
+- `docs/CURRENT_STATE.md` [future-doc: optional demo-workspace file; currently deferred] is not included in this demo slice. The kickoff handover's `## WHAT EXISTS TODAY` section is the explicit "what exists" anchor, so `CURRENT_STATE.md` remains deferred unless a later phase reopens that decision.
 - Alfred's first persisted artifact path is `<demo-project-root>/docs/handovers/ALFRED_HANDOVER_1.md`.
 - No `docs/canonical/` directory exists inside the demo project; canonical handover history in this repository is separate from the demo workspace.

@@ -553,6 +553,8 @@ def test_prompt_includes_three_state_vocabulary_when_facts_supplied() -> None:
     assert "declared but unimplemented" in prompt
     assert "to be created in this phase" in prompt
     assert "THREE-STATE VOCABULARY" in prompt
+    assert "[future-doc:" in prompt
+    assert "[future-path:" in prompt
 
 
 def test_prompt_omits_three_state_vocabulary_when_no_facts() -> None:

@@ -492,6 +492,26 @@ def test_good_reference_doc_path_passes() -> None:
     assert not ref_findings, "Known-good architecture doc must not be flagged"
 
 
+def test_explicit_future_doc_tag_skips_reference_doc_check() -> None:
+    md = _wrap_current_state(
+        "The external demo workspace starts with "
+        "`docs/CHARTER.md` [future-doc: demo workspace path]."
+    )
+    findings = validate_current_state_facts(md)
+    ref_findings = [f for f in findings if f.category == ClaimCategory.REFERENCE_DOC]
+    assert not ref_findings, "Explicit future-doc tag must suppress inventory lookup"
+
+
+def test_explicit_future_path_tag_skips_current_path_check() -> None:
+    md = _wrap_current_state(
+        "The external demo workspace begins with "
+        "`docs/handovers/` [future-path: demo workspace directory]."
+    )
+    findings = validate_current_state_facts(md)
+    path_findings = [f for f in findings if f.category == ClaimCategory.CURRENT_PATH]
+    assert not path_findings, "Explicit future-path tag must suppress path existence lookup"
+
+
 def test_reference_doc_missing_metadata_flagged(tmp_path: Path) -> None:
     (tmp_path / "docs").mkdir(parents=True)
     (tmp_path / "docs" / "ALFRED_HANDOVER_6.md").write_text(

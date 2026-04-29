@@ -51,6 +51,8 @@ from alfred.schemas.validator_findings import (  # noqa: E402
 )
 from alfred.tools.docs_policy import read_docs_inventory  # noqa: E402
 from alfred.tools.reference_doc_validator import (  # noqa: E402
+    link_is_inventory_exempt,
+    path_has_future_tag,
     validate_reference_doc_cross_links,
     validate_reference_doc_freshness,
     validate_reference_doc_structure,
@@ -435,6 +437,8 @@ def _check_path_existence(text: str, repo_root: Path) -> list[Finding]:
         if candidate in seen:
             continue
         seen.add(candidate)
+        if path_has_future_tag(text, match.start(), match.end()):
+            continue
         normalised = candidate.rstrip("/")
         full = repo_root / normalised
         if full.exists():
@@ -473,6 +477,8 @@ def _check_reference_documents(
         if path in seen:
             continue
         seen.add(path)
+        if link_is_inventory_exempt(text, match.start(), match.end()):
+            continue
         if path not in citable_inventory:
             if _claim_is_negated(text, (match.start(), match.end())):
                 continue

@@ -41,7 +41,7 @@ Do **not** change the execution pattern in response to domain tweaks.
 
 By demo time, Alfred must be able to show this exact arc:
 
-1. A new code project exists with `docs/CHARTER.md` and an empty or near-empty `docs/` surface
+1. A new code project exists with `docs/CHARTER.md` [future-doc: path inside the external demo workspace] and an empty or near-empty `docs/` surface
 2. GitHub Project starts with **0 items**
 3. Alfred generates a **kickoff handover draft** for that project workspace
 4. Alfred persists the approved kickoff artifact under the project's `docs/` folder
@@ -171,9 +171,9 @@ Does everyone agree the demo is specifically "new code project with Alfred in `d
 - A fixed kickoff charter prompt for the `Customer Onboarding Portal`
 - A fixed initial project-docs shape, for example:
   - `README.md`
-  - `docs/CHARTER.md`
-  - optional `docs/CURRENT_STATE.md`
-  - `docs/handovers/ALFRED_HANDOVER_1.md`
+  - `docs/CHARTER.md` [future-doc: path inside the external demo workspace]
+  - optional `docs/CURRENT_STATE.md` [future-doc: optional demo-workspace file; currently deferred]
+  - `docs/handovers/ALFRED_HANDOVER_1.md` [future-doc: first handover path inside the demo workspace]
   - optional future-facing wiki surfaces kept deliberately narrow in this slice
 - A fixed target handover outline for the generated draft
 - A specific kickoff task that seeds the blank board

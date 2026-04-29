@@ -36,8 +36,8 @@ Constraints:
 
 - Alfred lives **inside the demo project's `docs/` folder**, not inside this repository's `docs/` folder.
 - No `src/`, no tests, no CI workflows in the demo project at start. The point is "blank slate".
-- The handovers subdirectory exists but is empty; the first artifact Alfred persists is `docs/handovers/ALFRED_HANDOVER_1.md`.
-- Optional `docs/CURRENT_STATE.md` is **deferred** — Phase 1 may add it if the kickoff handover needs an explicit "what exists" anchor, but Phase 0 does not require it.
+- The handovers subdirectory exists but is empty; the first artifact Alfred persists is `docs/handovers/ALFRED_HANDOVER_1.md` [future-doc: first handover path inside the demo workspace].
+- Optional `docs/CURRENT_STATE.md` [future-doc: optional demo-workspace file; currently deferred] is **deferred** — Phase 1 may add it if the kickoff handover needs an explicit "what exists" anchor, but Phase 0 does not require it.
 
 ### 3. Demo board target
 
@@ -88,7 +88,7 @@ No alternative arcs may be demonstrated alongside this one.
 
 Phase 0 cannot be considered closed until the following are ratified by the project lead. They are surfaced here rather than guessed so Phase 1 inherits unambiguous inputs.
 
-1. **Charter text for `docs/active/CHARTER.md`** — needs a one-page (≤ 400 word) charter for the Customer Onboarding Portal that gives Alfred enough material to draft a credible kickoff handover. Recommended structure: business context, primary user, success metric, known constraints, explicit non-goals. **[DM]**
+1. **Charter text for `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md`** — needs a one-page (≤ 400 word) charter source document for the Customer Onboarding Portal that gives Alfred enough material to draft a credible kickoff handover. Phase 2 will copy it verbatim into `docs/CHARTER.md` [future-doc: path inside the external demo workspace]. Recommended structure: business context, primary user, success metric, known constraints, explicit non-goals. **[DM]**
 
 2. **Candidate first-backlog story titles (6–8)** — a list of plausible kickoff stories so Phase 4 has a benchmark to compare Story Generator output against. Suggested working list (subject to sign-off):
    1. Define onboarding journey end-to-end

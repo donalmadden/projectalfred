@@ -20,6 +20,10 @@ _AUTHOR_RE = re.compile(r"\*\*author:\*\*\s*(?P<value>.+)")
 _H2_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 _HANDOVER_NAME_RE = re.compile(r"ALFRED_HANDOVER_(\d+)(?:_[A-Z0-9_]+)?\.md$")
 _STALE_REFERENCE_DAYS = 90
+_EXPLICIT_FUTURE_PATH_TAG_RE = re.compile(
+    r"\[\s*future-(?:doc|path)(?:\s*:[^\]]+)?\]",
+    re.IGNORECASE,
+)
 _DEFERRED_DOC_MARKERS = (
     "optional",
     "deferred",
@@ -97,6 +101,27 @@ def _find_sentence(text: str, pos: int) -> str:
 def _link_is_deferred_or_optional(text: str, match_start: int) -> bool:
     sentence = _find_sentence(text, match_start).lower()
     return any(marker in sentence for marker in _DEFERRED_DOC_MARKERS)
+
+
+def path_has_future_tag(
+    text: str,
+    match_start: int,
+    match_end: int,
+) -> bool:
+    """Return whether an inline future-path/doc tag is attached to the path."""
+    before = text[max(0, match_start - 32):match_start]
+    after = text[match_end:min(len(text), match_end + 160)]
+    return bool(
+        _EXPLICIT_FUTURE_PATH_TAG_RE.search(before)
+        or _EXPLICIT_FUTURE_PATH_TAG_RE.search(after)
+    )
+
+
+def link_is_inventory_exempt(text: str, match_start: int, match_end: int) -> bool:
+    """Return whether a docs/*.md path is intentionally outside current inventory."""
+    return path_has_future_tag(text, match_start, match_end) or (
+        _link_is_deferred_or_optional(text, match_start)
+    )
 
 
 def extract_reference_doc_metadata(
@@ -241,7 +266,7 @@ def validate_reference_doc_cross_links(
         normalised_link = _normalise_doc_link_path(link, repo_root)
         if link in inventory or normalised_link in inventory:
             continue
-        if _link_is_deferred_or_optional(text, match.start()):
+        if link_is_inventory_exempt(text, match.start(), match.end()):
             continue
         issues.append(
             ReferenceDocIssue(

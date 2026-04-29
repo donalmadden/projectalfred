@@ -8,7 +8,7 @@ The generated handover opens by stating the project identity, the charter's busi
 
 ## WHAT EXISTS TODAY
 
-The generated handover states that the demo workspace begins with `README.md`, `docs/CHARTER.md`, and an empty `docs/handovers/` directory. It must also say explicitly that there is no prior delivery history, no existing `src/` tree, no tests, and no CI workflow in the demo workspace at kickoff.
+The generated handover states that the demo workspace begins with `README.md`, `docs/CHARTER.md` [future-doc: path inside the external demo workspace], and an empty `docs/handovers/` [future-path: directory inside the external demo workspace] directory. It must also say explicitly that there is no prior delivery history, no existing `src/` tree, no tests, and no CI workflow in the demo workspace at kickoff.
 
 ## KICKOFF GOALS
 

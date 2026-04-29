@@ -69,7 +69,7 @@ The following are **to be created in this phase** (Phase 1):
 ### Key Design Decisions Inherited (Do Not Revisit)
 
 1. **Demo scenario is `Customer Onboarding Portal`** — frozen by Phase 0 sign-off; domain substitution is only permitted if a sponsor objects after the slice works end-to-end.
-2. **Demo-project `docs/` shape is fixed** — `README.md`, `docs/active/CHARTER.md`, docs/handovers (empty); Alfred writes `docs/canonical/ALFRED_HANDOVER_1.md` as its first persisted artifact.
+2. **Demo-project `docs/` shape is fixed** — `README.md`, `docs/CHARTER.md` [future-doc: path inside the external demo workspace], `docs/handovers/` [future-path: directory inside the external demo workspace] (empty); Alfred writes `docs/handovers/ALFRED_HANDOVER_1.md` [future-doc: first handover path inside the demo workspace] as its first persisted artifact.
 3. **Success criterion is 6–8 visible draft items** on a previously blank GitHub Project V2 board; fewer or more is a Phase 4 acceptance failure.
 4. **Narrated arc is locked** — charter → kickoff handover draft → human approval → persist → compile → orchestrate → story generation → approval gate → board write.
 5. **Project `docs/` is primary; GitHub Project is a downstream projection** — board writes are never the source of truth.
@@ -105,7 +105,7 @@ Out of scope for this phase:
 - Proposal-persistence schema or model — Phase 3
 - GitHub Project V2 write path — Phase 4
 - Demo rehearsal runbook — Phase 5
-- `docs/active/CURRENT_STATE.md` for the demo project — deferred per Phase 0 freeze; Phase 1 may add it only if the kickoff handover needs an explicit "what exists" anchor (surfaced as an open question below)
+- `docs/CURRENT_STATE.md` [future-doc: optional demo-workspace file; currently deferred] for the demo project — deferred per Phase 0 freeze; Phase 1 may add it only if the kickoff handover needs an explicit "what exists" anchor (surfaced as an open question below)
 - Any archival sweep of `docs/active/` — deferred to a later phase
 
 ---
@@ -203,9 +203,9 @@ grep -E "business context|primary user|success metric|known constraints|non-goal
 
    The spec must answer all of the following, and only these, questions:
    - What is the one-paragraph text of `README.md`?
-   - What is the content of `docs/active/CHARTER.md`? (Answer: verbatim copy of `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md` — do not duplicate the text, reference the path)
+   - What is the content of `docs/CHARTER.md` [future-doc: path inside the external demo workspace]? (Answer: verbatim copy of `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md` — do not duplicate the text, reference the path)
    - Is `docs/handovers/` a git-tracked empty directory or does it require a `.gitkeep`? (Decide and record.)
-   - Is `docs/CURRENT_STATE.md` included? (Decision required — see open questions.)
+   - Is `docs/CURRENT_STATE.md` [future-doc: optional demo-workspace file; currently deferred] included? (Decision required — see open questions.)
 
 2. **Record the `ALFRED_HANDOVER_1.md` target path** — The layout spec must state explicitly: Alfred's first persisted artifact is `<demo-project-root>/docs/handovers/ALFRED_HANDOVER_1.md`. This is the file Phase 2 will write.
 
@@ -224,9 +224,9 @@ grep -E "README\.md|CHARTER\.md|handovers|ALFRED_HANDOVER_1" \
 
 **Expected:**
 - File exists at `docs/active/DEMO_PROJECT_LAYOUT.md`
-- All four required path elements (`README.md`, `docs/active/CHARTER.md`, `docs/handovers/`, `docs/handovers/ALFRED_HANDOVER_1.md`) are named
+- All four required path elements (`README.md`, `docs/CHARTER.md` [future-doc: path inside the external demo workspace], `docs/handovers/` [future-path: directory inside the external demo workspace], `docs/handovers/ALFRED_HANDOVER_1.md` [future-doc: first handover path inside the demo workspace]) are named
 - The `.gitkeep` question is answered explicitly
-- The `docs/CURRENT_STATE.md` question is answered explicitly (include or explicitly defer)
+- The `docs/CURRENT_STATE.md` [future-doc: optional demo-workspace file; currently deferred] question is answered explicitly (include or explicitly defer)
 
 **Suggested commit message:** `demo: task 2 — freeze demo project layout spec`
 
@@ -391,11 +391,11 @@ python scripts/check_manifest.py
 - Manifest hygiene held: `scripts/check_manifest.py` reports `No drift detected` after the new `docs/active/` entries were registered.
 
 **What was harder than expected:**
-- The CHARTER content question forked: Phase 0 sign-off was stamped against `docs/active/CHARTER.md`, while the Phase 1 plan required a charter at `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md`. Initially resolved by leaving the older file in place as a redirector; on review (2026-04-27) that was judged the wrong call — two competing entries in `docs/active/` blurred which charter was authoritative. Corrected by moving the older draft to `docs/archive/CUSTOMER_ONBOARDING_PORTAL_CHARTER_DRAFT.md`. Cleaner upstream would have been a single rename in Phase 0.
+- The CHARTER content question forked: Phase 0 sign-off was stamped against an earlier `CHARTER.md` draft under `docs/active/`, while the Phase 1 plan required a charter at `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md`. Initially resolved by leaving the older file in place as a redirector; on review (2026-04-27) that was judged the wrong call — two competing entries in `docs/active/` blurred which charter was authoritative. Corrected by moving the older draft to `docs/archive/CUSTOMER_ONBOARDING_PORTAL_CHARTER_DRAFT.md`. Cleaner upstream would have been a single rename in Phase 0.
 - The `## TASK 2` "Expected" verification line originally named `docs/canonical/ALFRED_HANDOVER_1.md` while every other reference (including the Phase 0 freeze and the layout doc) named `docs/handovers/ALFRED_HANDOVER_1.md`. Corrected in-place on 2026-04-27 so the verification line now matches the rest of the corpus.
 
 **Decisions made during execution (deviations from this plan):**
-- **Archived the prior `docs/active/CHARTER.md` to `docs/archive/CUSTOMER_ONBOARDING_PORTAL_CHARTER_DRAFT.md` (lifecycle: archive, indexed: false, citable: false).** Why: an earlier in-session decision retained it as an `active_brief` redirector, but on review that left two charter entries indexed under `docs/active/` and risked the planner citing the superseded text. Archiving makes the frozen Phase 1 charter the unambiguous authority while preserving the older draft for traceability. The `lifecycle_status: archive` flag excludes it from default generation and validation flows per `docs/DOCS_POLICY.md`. Approved: DM (in-session, 2026-04-27).
+- **Archived the prior charter draft from `docs/active/` to `docs/archive/CUSTOMER_ONBOARDING_PORTAL_CHARTER_DRAFT.md` (lifecycle: archive, indexed: false, citable: false).** Why: an earlier in-session decision retained it as an `active_brief` redirector, but on review that left two charter entries indexed under `docs/active/` and risked the planner citing the superseded text. Archiving makes the frozen Phase 1 charter the unambiguous authority while preserving the older draft for traceability. The `lifecycle_status: archive` flag excludes it from default generation and validation flows per `docs/DOCS_POLICY.md`. Approved: DM (in-session, 2026-04-27).
 - **`KICKOFF_HANDOVER_OUTLINE.md` and `DEMO_PROJECT_LAYOUT.md` use ASCII hyphens (`-`) in section headers instead of em-dashes (`—`).** Why: matches the verification regex in this handover and avoids unicode-collision risk in downstream tooling. Approved: implicit — no behavioural impact.
 
 **Forward plan:**
