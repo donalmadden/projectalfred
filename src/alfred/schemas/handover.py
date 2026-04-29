@@ -67,6 +67,14 @@ class TaskResult(BaseModel):
     commits: list[str] = Field(default_factory=list)
     files_modified: list[str] = Field(default_factory=list)
     pivot_taken: Optional[str] = None
+    # Phase 3 — durable runtime state from agents that produce structured
+    # records. Populated by the orchestrator's story_generator runner with
+    # the persisted StoryProposalRecord ids; consumers (gate review,
+    # eventual Phase 4 board write) look these up via
+    # ``alfred.tools.persistence.list_story_proposals(...)`` rather than
+    # reading the agent output directly. Empty by default so non-story
+    # tasks and runs without persistence (db_path unset) are unaffected.
+    proposed_story_ids: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

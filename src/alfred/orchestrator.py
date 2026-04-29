@@ -30,6 +30,7 @@ from alfred.schemas.agent import (
     RAGChunk,
     RetroAnalystInput,
     StoryGeneratorInput,
+    StoryGeneratorOutput,
 )
 from alfred.schemas.checkpoint import Checkpoint, Verdict
 from alfred.schemas.config import AlfredConfig
@@ -40,6 +41,7 @@ from alfred.schemas.handover import (
     PostMortem,
     TaskResult,
 )
+from alfred.schemas.story_proposal import StoryProposal, StoryProposalRecord
 from alfred.schemas.validator_findings import FormattedFinding
 
 
@@ -109,8 +111,11 @@ def _register_runners() -> None:
         )
         provider, model = resolve_model("generate", config)
         out = run_story_generator(inp, provider=provider, model=model, db_path=db_path)
-        summary = f"Generated {len(out.stories)} stories; {len(out.stories_failing_rubric)} failed rubric."
-        return TaskResult(completed=True, output_summary=summary)
+        # Match the checkpoint path's fallback: explicit db_path wins,
+        # otherwise inherit from config so harness callers that wire
+        # cfg.database.path get persistence without an extra argument.
+        effective_db = db_path or (config.database.path or None)
+        return _persist_story_output(task, handover, out, db_path=effective_db)
 
     def _retro_runner(
         task: HandoverTask,
@@ -170,6 +175,87 @@ def _retrieve_rag(query: str, config: AlfredConfig) -> list[RAGChunk]:
         return retrieve(query, config.rag.index_path, top_k=5)
     except Exception:
         return []
+
+
+# ---------------------------------------------------------------------------
+# Story-output persistence (Phase 3)
+# ---------------------------------------------------------------------------
+#
+# Lifts the structured StoryGeneratorOutput onto TaskResult and (if a
+# database path is configured) into the story_proposals SQLite table, so
+# the approval gate can read the proposals back from durable state
+# without re-invoking the generator. Replaces the Phase 2 reliance on a
+# harness-side ``set_agent_runner`` capture.
+
+
+_KICKOFF_PROPOSAL_MIN: int = 6
+_KICKOFF_PROPOSAL_MAX: int = 8
+
+
+def _persist_story_output(
+    task: HandoverTask,
+    handover: HandoverDocument,
+    output: StoryGeneratorOutput,
+    *,
+    db_path: Optional[str],
+) -> TaskResult:
+    """Validate the count, persist proposals if a DB path is configured,
+    and return a TaskResult carrying the structured-output linkage.
+
+    Records are only persisted when ``db_path`` is non-empty. With no DB
+    configured (e.g. test runs that disable persistence) the runner
+    still returns a structured TaskResult so downstream callers can
+    decide what to do — the proposals just don't survive the process.
+    """
+    rubric_failed = len(output.stories_failing_rubric)
+    valid_proposals: list[StoryProposalRecord] = []
+    skipped = 0
+    for story in output.stories:
+        if story.story_points is None:
+            skipped += 1
+            continue
+        proposal = StoryProposal(
+            title=story.title,
+            description=story.description,
+            acceptance_criteria=list(story.acceptance_criteria),
+            story_points=story.story_points,
+        )
+        valid_proposals.append(
+            StoryProposalRecord.from_proposal(
+                proposal,
+                handover_id=handover.id,
+                task_id=task.id,
+            )
+        )
+
+    n = len(valid_proposals)
+    if not _KICKOFF_PROPOSAL_MIN <= n <= _KICKOFF_PROPOSAL_MAX:
+        return TaskResult(
+            completed=False,
+            output_summary=(
+                f"Generated {n} valid proposals; expected "
+                f"{_KICKOFF_PROPOSAL_MIN}-{_KICKOFF_PROPOSAL_MAX}. "
+                f"({rubric_failed} failed rubric, {skipped} missing story_points.) "
+                "No persistence performed."
+            ),
+        )
+
+    if db_path:
+        from alfred.tools.persistence import insert_story_proposals
+        insert_story_proposals(db_path, valid_proposals)
+
+    summary_extras: list[str] = []
+    if rubric_failed:
+        summary_extras.append(f"{rubric_failed} failed rubric")
+    if skipped:
+        summary_extras.append(f"{skipped} missing story_points")
+    extras_str = (" (" + "; ".join(summary_extras) + ")") if summary_extras else ""
+    persisted_str = " — persisted" if db_path else " — not persisted (no db_path)"
+    return TaskResult(
+        completed=True,
+        output_summary=f"Generated {n} story proposals{extras_str}{persisted_str}.",
+        proposed_story_ids=[r.proposed_story_id for r in valid_proposals],
+    )
 
 
 # ---------------------------------------------------------------------------
