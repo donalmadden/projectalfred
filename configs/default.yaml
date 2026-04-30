@@ -3,16 +3,16 @@
 # Never store credentials in this file.
 
 llm:
-  provider: "anthropic"
-  model: "claude-haiku-4-5-20251001"
+  provider: "openai"
+  model: "gpt-5.2"
   temperature: 0.0        # Deterministic by default (methodology property 2)
   max_tokens: 4096
 
 cost_routing:
   enabled: true
-  provider: "anthropic"
-  classifier_model: "claude-haiku-4-5-20251001"  # cheap: triage and classification
-  generator_model: "claude-sonnet-4-6"            # expensive: planner, critique, compile
+  provider: "openai"
+  classifier_model: "gpt-5.2"  # cheap: triage and classification
+  generator_model: "gpt-5.2"   # expensive: planner, critique, compile
 
 github:
   org: ""                 # Your GitHub org or user
