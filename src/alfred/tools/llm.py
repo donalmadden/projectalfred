@@ -257,6 +257,13 @@ def complete(
     attempt is logged via persistence if `db_path` is supplied. Raises
     `LLMError` after all retries are exhausted or if the provider is unknown.
     """
+    if not model or not model.strip():
+        raise LLMError(
+            f"LLM model is empty for provider {provider!r}. "
+            "Set llm.model (or the matching cost_routing.*_model) in the "
+            "Alfred config — Alfred will not invoke a provider with no model."
+        )
+
     adapter = _PROVIDERS.get(provider)
     if adapter is None:
         raise LLMError(

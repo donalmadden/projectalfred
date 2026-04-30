@@ -58,6 +58,20 @@ def test_complete_unknown_provider_raises() -> None:
         llm.complete("prompt", _Echo, provider="nope", model="m")
 
 
+@pytest.mark.parametrize("blank_model", ["", "   ", "\t\n"])
+def test_complete_empty_model_raises_before_dispatch(
+    monkeypatch: pytest.MonkeyPatch, blank_model: str
+) -> None:
+    """A blank model string must fail fast — before the provider adapter
+    is consulted — with a message that names the provider and points at
+    the config knobs to fix.
+    """
+    state = _install_fake(monkeypatch, [{"value": "ok", "count": 1}])
+    with pytest.raises(llm.LLMError, match=r"LLM model is empty.*'fake'"):
+        llm.complete("prompt", _Echo, provider="fake", model=blank_model)
+    assert state["calls"] == 0, "provider must not be invoked when model is blank"
+
+
 def test_complete_retries_on_validation_error(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _install_fake(
         monkeypatch,
