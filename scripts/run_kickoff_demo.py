@@ -51,7 +51,13 @@ from alfred.schemas.handover import (  # noqa: E402
     TaskResult,
 )
 from alfred.schemas.story_proposal import StoryProposalRecord  # noqa: E402
-from alfred.tools.persistence import list_story_proposals  # noqa: E402
+from alfred.tools.board_write_contract import BOARD_WRITE_ACTION  # noqa: E402
+from alfred.tools.persistence import (  # noqa: E402
+    create_pending_approval,
+    list_story_proposals,
+    list_write_receipts,
+    record_approval_decision,
+)
 
 CHARTER_SRC: Path = REPO_ROOT / "docs" / "active" / "CUSTOMER_ONBOARDING_PORTAL_CHARTER.md"
 OUTLINE_SRC: Path = REPO_ROOT / "docs" / "active" / "KICKOFF_HANDOVER_OUTLINE.md"
@@ -480,6 +486,187 @@ def review_only_demo(
 
 
 # ---------------------------------------------------------------------------
+# Phase 4 — approval-gated GitHub Project V2 write arc
+# ---------------------------------------------------------------------------
+#
+# Reads persisted proposals (no regeneration), demonstrates the gate
+# refusing a write without approval, records an approval, runs the
+# orchestrator's board_writer agent, and prints proposal_id → github_item_id
+# evidence so a reviewer can see "blank board → approval → populated board"
+# in a single transcript.
+
+
+def _print_status_summary(
+    records: list[StoryProposalRecord], out: IO[str], *, label: str
+) -> None:
+    counts: dict[str, int] = {"pending": 0, "approved": 0, "written": 0}
+    for r in records:
+        counts[r.approval_status] = counts.get(r.approval_status, 0) + 1
+    print(
+        f"[{label}] proposal status counts: "
+        f"pending={counts['pending']} approved={counts['approved']} "
+        f"written={counts['written']}",
+        file=out,
+    )
+
+
+def _board_writer_handover(
+    handover_id: str, task_id: str
+) -> HandoverDocument:
+    from datetime import date as _date
+    from alfred.schemas.handover import HandoverContext
+
+    return HandoverDocument(
+        id=handover_id,
+        title="Board write",
+        date=_date.today(),
+        author="Alfred",
+        context=HandoverContext(narrative="Phase 4 board write run."),
+        tasks=[
+            HandoverTask(
+                id=task_id,
+                title="Write approved proposals to GitHub Project V2",
+                goal="Project the approved persisted backlog onto the board.",
+                agent_type="board_writer",
+            )
+        ],
+    )
+
+
+def run_phase4_arc(
+    workspace: Path,
+    *,
+    config: Optional[AlfredConfig] = None,
+    out_stream: Optional[IO[str]] = None,
+    handover_id: str = KICKOFF_HANDOVER_ID,
+    task_id: str = KICKOFF_TASK_ID,
+    approval_id: str = "approval-kickoff-board-1",
+) -> int:
+    """Run the approval→write demo arc against already-persisted proposals.
+
+    Prerequisite: ``run_demo`` (or ``--review-only``) has populated the
+    SQLite store with a 6–8 proposal batch for ``(handover_id, task_id)``.
+    This function does not regenerate proposals.
+
+    Evidence printed in order:
+
+      1. status counts before any approval (all ``pending``)
+      2. board-writer dispatch with no approval → refused
+      3. approval recorded (``WRITE_GITHUB_PROJECT_V2`` for ``task_id``)
+      4. board-writer dispatch with approval → writes the batch
+      5. status counts after write (all ``written``)
+      6. proposal_id → github_item_id mapping with title verification
+    """
+    out: IO[str] = out_stream if out_stream is not None else sys.stdout
+    cfg = config if config is not None else default_demo_config(workspace)
+    db_path = cfg.database.path or None
+    if not db_path:
+        raise HarnessError(
+            "Phase 4 arc requires a configured database path. "
+            "Run the harness without --phase4 first to seed proposals."
+        )
+
+    records = list_story_proposals(db_path, handover_id=handover_id, task_id=task_id)
+    if not records:
+        raise HarnessError(
+            f"No persisted proposals for handover_id={handover_id!r} "
+            f"task_id={task_id!r}. Run the harness without --phase4 first."
+        )
+
+    # 1. Pre-approval state.
+    print(f"[PHASE4] Reading persisted proposals from {db_path}", file=out)
+    _print_status_summary(records, out, label="PRE")
+
+    # Reset runners so the orchestrator dispatches the real board_writer.
+    orchestrator._AGENT_RUNNERS.clear()
+
+    # If everything in this batch is already written from a prior arc run,
+    # short-circuit: skip the refusal demonstration and the approval step
+    # since neither would produce truthful evidence here.
+    if all(r.approval_status == "written" for r in records):
+        print(
+            "[PHASE4] All proposals already written; nothing to demonstrate.",
+            file=out,
+        )
+        receipts = list_write_receipts(
+            db_path, handover_id=handover_id, task_id=task_id
+        )
+        print(f"[PHASE4] Existing write receipts ({len(receipts)}):", file=out)
+        for receipt in receipts:
+            print(
+                f"  {receipt['proposed_story_id']} -> {receipt['github_item_id']}",
+                file=out,
+            )
+        return 0
+
+    # 2. Refused write (no approval).
+    print(
+        "[PHASE4] Dispatching board_writer with no approval — expecting refusal",
+        file=out,
+    )
+    handover = _board_writer_handover(handover_id, task_id)
+    orchestrate(handover, cfg, db_path=db_path)
+    refusal_result = handover.tasks[0].result
+    if refusal_result is None or refusal_result.completed:
+        raise HarnessError(
+            "Expected board_writer to refuse without approval; got "
+            f"{refusal_result!r}"
+        )
+    print(f"[PHASE4] Refused: {refusal_result.output_summary}", file=out)
+
+    # 3. Record approval.
+    create_pending_approval(
+        db_path,
+        approval_id=approval_id,
+        handover_id=handover_id,
+        action_type=BOARD_WRITE_ACTION,
+        item_id=task_id,
+        timeout_seconds=3600,
+    )
+    record_approval_decision(db_path, approval_id, "approved")
+    print(
+        f"[PHASE4] Approval recorded: id={approval_id} action={BOARD_WRITE_ACTION} "
+        f"target={task_id}",
+        file=out,
+    )
+
+    # 4. Approved dispatch.
+    print(
+        "[PHASE4] Dispatching board_writer with approval — expecting writes",
+        file=out,
+    )
+    handover = _board_writer_handover(handover_id, task_id)
+    orchestrate(handover, cfg, db_path=db_path)
+    write_result = handover.tasks[0].result
+    if write_result is None or not write_result.completed:
+        raise HarnessError(
+            "board_writer failed despite approval: "
+            f"{write_result.output_summary if write_result else '(no result)'}"
+        )
+    print(f"[PHASE4] {write_result.output_summary}", file=out)
+
+    # 5. Post-write state.
+    after = list_story_proposals(db_path, handover_id=handover_id, task_id=task_id)
+    _print_status_summary(after, out, label="POST")
+
+    # 6. Receipt evidence — proposal_id -> github_item_id, titles match.
+    receipts = list_write_receipts(db_path, handover_id=handover_id, task_id=task_id)
+    title_by_proposal = {r.proposed_story_id: r.title for r in after}
+    print(f"[PHASE4] Write receipts ({len(receipts)}):", file=out)
+    for receipt in receipts:
+        proposal_title = title_by_proposal.get(
+            receipt["proposed_story_id"], "<missing>"
+        )
+        match = "OK" if proposal_title == receipt["github_title"] else "MISMATCH"
+        print(
+            f"  {receipt['proposed_story_id']} -> {receipt['github_item_id']} "
+            f"[{match}] {receipt['github_title']!r}",
+            file=out,
+        )
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -503,12 +690,26 @@ def build_parser() -> argparse.ArgumentParser:
             "review across pause/resume does not regenerate stories."
         ),
     )
+    parser.add_argument(
+        "--phase4",
+        action="store_true",
+        help=(
+            "Run the approval-gated GitHub Project V2 write arc against "
+            "already-persisted proposals. Prints refusal evidence, records "
+            "an approval, runs the board_writer, and prints "
+            "proposal_id -> github_item_id receipts. Requires GitHub "
+            "credentials; run the harness without --phase4 first to seed "
+            "the proposals."
+        ),
+    )
     return parser
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.phase4:
+            return run_phase4_arc(args.workspace)
         if args.review_only:
             return review_only_demo(args.workspace)
         return run_demo(args.workspace)
