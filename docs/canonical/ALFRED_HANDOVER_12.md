@@ -328,15 +328,26 @@ rg -n "Fallback" docs/active/PHASE_5_DEMO_SCRIPT.md
 > cold-start from this artifact alone.
 
 **What worked:**
-- *executor to fill*
+- The four-task arc landed as planned: `docs/active/PHASE_5_DEMO_SCRIPT.md` covers the operator flow, frozen inputs/preflight, evidence surfaces, and rehearsal-acceptance + fallback sections, with the verbatim approval-gate wording embedded.
+- A plain-English companion (`docs/active/PHASE_5_DEMO_SCRIPT_PRODUCT_OWNER.md`, registered in `docs/DOCS_MANIFEST.yaml`) was added so a non-technical operator can narrate the run alongside the technical script — this fell within Phase 5's "operator clarity" goal without expanding product scope.
+- Two operator scripts were added under `scripts/` to keep rehearsal honest when reality deviates: `scripts/resume_phase4_write.py` retries the approved board-write step after a config fix without regenerating proposals, and `scripts/backfill_phase4_bodies.py` patches existing draft-issue bodies on a board that was written before body rendering existed. Neither bypasses `orchestrate(...)` or the approval gate.
+- Body rendering shipped as a small feature delta (`src/alfred/tools/story_markdown.py` + `render_story_proposal_body` wired through the orchestrator's board-writer). Draft cards now open with description, acceptance criteria, and story points — which directly improves the "evidence to point to" moment of the demo.
+- The GitHub adapter (`src/alfred/tools/github_api.py`) was extended to resolve ProjectV2 boards under either an `organization(login:)` or `user(login:)` root, and exposes `update_story_body` for retroactive patches. Tests cover both owner kinds and the new mutation path.
 
 **What was harder than expected:**
-- *executor to fill*
+- The original plan framed Phase 5 as pure packaging, but rehearsal surfaced two real product gaps that had to be addressed to keep the demo honest: (1) draft cards on the live board were title-only, which weakened the "evidence" story in Task 3; (2) the target rehearsal board lives under a personal user login, not an organization, and the adapter's GraphQL only queried `organization(login:)`. Both were fixed as narrow, tested changes rather than worked around in the script.
+- Deciding what counts as "minimal logging tweaks" vs. new product scope (per Hard Rule 1 / Task 3) required care. We held the line: no new endpoints, no new schemas, only the body-rendering helper and the two retry/backfill scripts.
 
 **Decisions made during execution (deviations from this plan):**
-- *executor to fill — each deviation must include: what changed, why, who approved*
+- Added `src/alfred/tools/story_markdown.py` and threaded `render_story_proposal_body(...)` into `orchestrator._run_board_writer`. *Why:* Task 3 evidence requires that what an operator opens in GitHub matches what was approved in the persisted proposal; title-only cards forced narration to fill the gap. *Approved by:* Donal, in the rehearsal turn that preceded these commits.
+- Extended `github_api.py` to dual-resolve owners as organization-or-user and added `update_story_body(...)`. *Why:* the rehearsal board is `donalmadden/<n>`, a user-owned ProjectV2; the original adapter raised "Could not resolve to an Organization" and blocked the demo. *Approved by:* Donal, same rehearsal turn.
+- Added `scripts/resume_phase4_write.py` and `scripts/backfill_phase4_bodies.py` under `scripts/` per the placement rule. *Why:* Phase 5's fallback plan calls for honest recovery without regenerating proposals or hand-editing the board; these scripts make those branches executable. *Approved by:* Donal, same rehearsal turn.
+- Added `docs/active/PHASE_5_DEMO_SCRIPT_PRODUCT_OWNER.md` (registered as `kind: active_brief`, `lifecycle_status: active` in `DOCS_MANIFEST.yaml`). *Why:* the rehearsal exposed that the technical script alone is hard to narrate live; a product-owner companion preserves the "explain checkpoints and approvals in plain language" intent of Task 4's narrator notes without bloating the technical doc. *Approved by:* Donal.
 
 **Forward plan:**
-- *executor to fill*
+- Run two clean rehearsals against the user-owned target board per the Task 4 acceptance rubric and capture the evidence bundle (persisted handover, approvals listing, write receipts, post-write board screenshot).
+- If a rehearsal fails partway, exercise the fallback scripts (`resume_phase4_write.py`, `backfill_phase4_bodies.py`) to confirm the recovery branches in `PHASE_5_DEMO_SCRIPT.md` work as documented.
+- Do not broaden scope in Handover 13. Likely next-phase candidates are evaluations/tests (Phase 6) and developer-experience hardening (Phase 7) — not new product features layered onto the kickoff slice.
+- Watch for one cleanup item: the operator scripts currently live under `scripts/` as one-shot helpers; if they become reused beyond the kickoff demo, consider promoting their core logic into `src/alfred/` modules with proper test coverage.
 
 **next_handover_id:** ALFRED_HANDOVER_13
