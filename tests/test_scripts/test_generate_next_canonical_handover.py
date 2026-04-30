@@ -6,7 +6,11 @@ import re
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+
+from alfred.tools.docs_policy import is_citable_doc
 
 import generate_next_canonical_handover as gnch  # noqa: E402
 
@@ -53,11 +57,16 @@ def test_parse_args_defaults_target_canonical_output() -> None:
     assert args.historical_context_mode == "summary"
 
 
-def test_sprint_goal_is_scoped_to_demo_phase_3() -> None:
-    assert "Phase 3 only" in gnch.SPRINT_GOAL
-    assert "Phase 4 (GitHub Project V2 write path)" in gnch.SPRINT_GOAL
+def test_previous_canonical_source_is_citable_under_docs_policy() -> None:
+    assert is_citable_doc(f"docs/canonical/{gnch.EXPECTED_PREVIOUS_HANDOVER}.md")
+
+
+def test_sprint_goal_is_scoped_to_demo_phase_4() -> None:
+    assert "Phase 4 only" in gnch.SPRINT_GOAL
+    assert "GitHub Project V2 write path" in gnch.SPRINT_GOAL
     assert "persisted `StoryProposal` records" in gnch.SPRINT_GOAL
-    assert "do not replace the demo project's docs surface" in gnch.SPRINT_GOAL
+    assert "blank board" in gnch.SPRINT_GOAL
+    assert "Phase 5 (rehearsal runbook" in gnch.SPRINT_GOAL
 
 
 def test_context_attempt_order_degrades_to_none() -> None:
@@ -119,10 +128,35 @@ def test_load_historical_context_none_mode_returns_none(tmp_path: Path) -> None:
     assert gnch.load_historical_context(source, mode="none") is None
 
 
+def test_validate_required_citable_docs_reports_policy_gaps(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_10.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("# x\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        gnch,
+        "AUTHORITATIVE_SCOPE_SELECTION_SPECS",
+        (),
+    )
+    monkeypatch.setattr(
+        gnch,
+        "is_citable_doc",
+        lambda path, repo_root=None: False,
+    )
+
+    assert gnch.validate_required_citable_docs(source) == [
+        "docs/canonical/ALFRED_HANDOVER_10.md"
+    ]
+
+
 def test_load_historical_context_skips_when_source_already_in_authoritative_scope(
     tmp_path: Path,
 ) -> None:
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_9.md"
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_10.md"
     source.parent.mkdir(parents=True)
     source.write_text("# x\n", encoding="utf-8")
     source_key = gnch._repo_relative_doc_path(source)
@@ -141,20 +175,20 @@ def test_build_planner_context_deduplicates_overlap_between_scope_and_history(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_9.md"
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_10.md"
     source.parent.mkdir(parents=True)
     source.write_text(
-        "# Alfred's Handover Document #9\n\n"
+        "# Alfred's Handover Document #10\n\n"
         "## TASK OVERVIEW\n"
         "| # | Task | Deliverable |\n"
         "|---|---|---|\n"
-        "| 1 | Keep | `docs/canonical/ALFRED_HANDOVER_10.md` |\n",
+        "| 1 | Keep | `docs/canonical/ALFRED_HANDOVER_11.md` |\n",
         encoding="utf-8",
     )
 
     scope = (
         "AUTHORITATIVE\n"
-        "----- BEGIN docs/canonical/ALFRED_HANDOVER_9.md -----\n"
+        "----- BEGIN docs/canonical/ALFRED_HANDOVER_10.md -----\n"
         "body"
     )
 
@@ -173,9 +207,9 @@ def test_load_demo_plan_context_builds_targeted_authoring_packet() -> None:
     assert "Source-of-truth expectation:" in packet.text
     assert "===== PASS 1 — STRUCTURED FACTS =====" in packet.text
     assert "===== PASS 2 — VERBATIM SOURCE SECTIONS =====" in packet.text
-    assert "TASK 2 — Demo Execution Harness > Implementation" in packet.text
+    assert "TASK 4 — Gate review reads from persistence (no regeneration)" in packet.text
     assert "### Verification" not in packet.text
-    assert "docs/canonical/ALFRED_HANDOVER_9.md" in packet.source_doc_paths
+    assert "docs/canonical/ALFRED_HANDOVER_10.md" in packet.source_doc_paths
 
 
 def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:
