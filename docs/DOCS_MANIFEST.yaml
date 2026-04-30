@@ -131,6 +131,14 @@ documents:
     authoritative: true
     notes: Canonical handover for Phase 4 of the blank-project kickoff demo — approval-gated GitHub Project V2 board writes from persisted story proposals.
 
+  - current_path: docs/canonical/ALFRED_HANDOVER_12.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover for Phase 5 of the blank-project kickoff demo — rehearsal, operator runbook, and demo-grade instrumentation.
+
   - current_path: docs/protocol/architecture.md
     kind: protocol_doc
     lifecycle_status: protocol
@@ -219,6 +227,14 @@ documents:
     citable: true
     authoritative: false
     notes: Frozen Phase 1 layout spec for the demo project's initial docs surface and first persisted handover path.
+
+  - current_path: docs/active/PHASE_5_DEMO_SCRIPT.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Phase 5 operator rehearsal script for the blank-project kickoff demo, including the manual kickoff review boundary and the runtime-enforced board-write gate.
 
   - current_path: docs/active/KICKOFF_HANDOVER_OUTLINE.md
     kind: active_brief
@@ -364,3 +380,27 @@ documents:
     citable: true
     authoritative: true
     notes: Authoritative inventory of the docs corpus consumed by policy-aware tooling.
+
+  - current_path: docs/agents/domain.md
+    kind: agent_guide
+    lifecycle_status: governance
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Guidance for engineering skills on which domain docs and ADRs to read before exploring the codebase.
+
+  - current_path: docs/agents/issue-tracker.md
+    kind: agent_guide
+    lifecycle_status: governance
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Repo-local issue tracker instructions for skills that create, read, or update GitHub issues.
+
+  - current_path: docs/agents/triage-labels.md
+    kind: agent_guide
+    lifecycle_status: governance
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Mapping between canonical triage roles and the actual label strings used in this repo.
