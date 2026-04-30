@@ -86,6 +86,16 @@ _SCHEMA = [
     CREATE INDEX IF NOT EXISTS ix_story_proposals_handover_task
         ON story_proposals (handover_id, task_id)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS proposal_write_receipts (
+        proposed_story_id TEXT PRIMARY KEY,
+        github_item_id TEXT NOT NULL,
+        github_title TEXT NOT NULL,
+        approval_decision_id TEXT NOT NULL,
+        written_at TEXT NOT NULL,
+        FOREIGN KEY (proposed_story_id) REFERENCES story_proposals (proposed_story_id)
+    )
+    """,
 ]
 
 
@@ -478,3 +488,148 @@ def update_story_proposal_status(
         if cur.rowcount == 0:
             raise ValueError(f"Story proposal not found: {proposed_story_id}")
         conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# Write receipts (Phase 4 — board-write traceability)
+# ---------------------------------------------------------------------------
+#
+# A write receipt ties a persisted proposal row to the GitHub Project V2
+# draft item it produced. One receipt per ``proposed_story_id`` (PK), so
+# re-running the write step after a partial failure cannot create
+# duplicates: ``record_proposal_write`` is the atomic
+# (insert-receipt + mark-written) primitive used by Phase 4 Task 3.
+
+
+def _receipt_row_to_dict(row: sqlite3.Row) -> dict[str, str]:
+    return {
+        "proposed_story_id": row["proposed_story_id"],
+        "github_item_id": row["github_item_id"],
+        "github_title": row["github_title"],
+        "approval_decision_id": row["approval_decision_id"],
+        "written_at": row["written_at"],
+    }
+
+
+def get_write_receipt(
+    db_path: str, proposed_story_id: str
+) -> Optional[dict[str, str]]:
+    """Return the write receipt for a proposal, or ``None`` if absent."""
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        row = cur.execute(
+            """
+            SELECT proposed_story_id, github_item_id, github_title,
+                   approval_decision_id, written_at
+            FROM proposal_write_receipts
+            WHERE proposed_story_id = ?
+            """,
+            (proposed_story_id,),
+        ).fetchone()
+    return _receipt_row_to_dict(row) if row is not None else None
+
+
+def list_write_receipts(
+    db_path: str,
+    *,
+    handover_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+) -> list[dict[str, str]]:
+    """Return write receipts, optionally filtered by proposal linkage.
+
+    Joins ``proposal_write_receipts`` to ``story_proposals`` so the
+    handover/task filters mirror ``list_story_proposals``. Order is
+    deterministic by ``written_at`` (oldest first) for reproducible
+    evidence output.
+    """
+    clauses: list[str] = []
+    params: list[str] = []
+    if handover_id is not None:
+        clauses.append("sp.handover_id = ?")
+        params.append(handover_id)
+    if task_id is not None:
+        clauses.append("sp.task_id = ?")
+        params.append(task_id)
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    sql = f"""
+        SELECT r.proposed_story_id, r.github_item_id, r.github_title,
+               r.approval_decision_id, r.written_at
+        FROM proposal_write_receipts r
+        JOIN story_proposals sp ON sp.proposed_story_id = r.proposed_story_id
+        {where}
+        ORDER BY r.written_at ASC, r.proposed_story_id ASC
+    """
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        rows = cur.execute(sql, params).fetchall()
+    return [_receipt_row_to_dict(r) for r in rows]
+
+
+def record_proposal_write(
+    db_path: str,
+    *,
+    proposed_story_id: str,
+    github_item_id: str,
+    github_title: str,
+    approval_decision_id: str,
+) -> None:
+    """Atomically record a write receipt and transition status to ``written``.
+
+    Performs both writes in a single SQLite transaction so a partial
+    failure cannot leave a receipt without a status update (or vice
+    versa). Preconditions:
+
+      - the proposal row exists,
+      - its current ``approval_status`` is ``'approved'``,
+      - no receipt already exists for this ``proposed_story_id``.
+
+    Violations raise ``ValueError`` and the transaction is rolled back.
+    """
+    now = _now_iso()
+    with closing(_connect(db_path)) as conn, closing(conn.cursor()) as cur:
+        try:
+            row = cur.execute(
+                "SELECT approval_status FROM story_proposals WHERE proposed_story_id = ?",
+                (proposed_story_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"Story proposal not found: {proposed_story_id}")
+            if row["approval_status"] != "approved":
+                raise ValueError(
+                    f"Cannot write proposal {proposed_story_id!r} from status "
+                    f"{row['approval_status']!r}"
+                )
+            existing = cur.execute(
+                "SELECT 1 FROM proposal_write_receipts WHERE proposed_story_id = ?",
+                (proposed_story_id,),
+            ).fetchone()
+            if existing is not None:
+                raise ValueError(
+                    f"Write receipt already exists for {proposed_story_id!r}"
+                )
+
+            cur.execute(
+                """
+                INSERT INTO proposal_write_receipts
+                    (proposed_story_id, github_item_id, github_title,
+                     approval_decision_id, written_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    proposed_story_id,
+                    github_item_id,
+                    github_title,
+                    approval_decision_id,
+                    now,
+                ),
+            )
+            cur.execute(
+                """
+                UPDATE story_proposals
+                SET approval_status = 'written', written_at = ?
+                WHERE proposed_story_id = ?
+                """,
+                (now, proposed_story_id),
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
