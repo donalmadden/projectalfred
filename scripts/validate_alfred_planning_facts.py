@@ -64,8 +64,8 @@ from alfred.tools.repo_facts import (  # noqa: E402
     read_partial_state_facts,
     read_reference_documents,
     read_supported_type_checkers,
-    read_type_checkers,
     read_top_level_packages,
+    read_type_checkers,
 )
 
 # ---------------------------------------------------------------------------

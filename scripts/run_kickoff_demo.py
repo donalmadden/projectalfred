@@ -31,6 +31,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import init_demo_workspace  # noqa: E402
+
 from alfred import orchestrator  # noqa: E402
 from alfred.orchestrator import (  # noqa: E402
     _persist_story_output,
@@ -203,7 +204,6 @@ def _install_capture_runner(
     ``captured`` list is retained as a runtime test signal (was the runner
     invoked?), but the gate review reads from SQLite, not from this list.
     """
-    from alfred.schemas.agent import RAGChunk
 
     def runner(
         task: HandoverTask,

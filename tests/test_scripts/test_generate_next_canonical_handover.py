@@ -10,9 +10,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
-from alfred.tools.docs_policy import is_citable_doc
-
 import generate_next_canonical_handover as gnch  # noqa: E402
+
+from alfred.tools.docs_policy import is_citable_doc
 
 
 def test_expected_handover_id_matches_output_filename() -> None:

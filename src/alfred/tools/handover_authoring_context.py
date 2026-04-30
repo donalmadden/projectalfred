@@ -1,11 +1,10 @@
 """Deterministic section indexing and context assembly for handover authoring."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
-
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 _BULLET_RE = re.compile(r"^(?:[-*]|\d+\.)\s+")

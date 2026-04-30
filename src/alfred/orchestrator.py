@@ -134,9 +134,18 @@ def _register_runners() -> None:
         out = run_retro_analyst(inp, provider=provider, model=model, db_path=db_path)
         return TaskResult(completed=True, output_summary=out.retrospective_summary[:200])
 
+    def _board_writer_runner(
+        task: HandoverTask,
+        handover: HandoverDocument,
+        config: AlfredConfig,
+        db_path: Optional[str],
+    ) -> TaskResult:
+        return _run_board_writer(task, handover, config, db_path)
+
     _AGENT_RUNNERS["planner"] = _planner_runner
     _AGENT_RUNNERS["story_generator"] = _story_runner
     _AGENT_RUNNERS["retro_analyst"] = _retro_runner
+    _AGENT_RUNNERS["board_writer"] = _board_writer_runner
 
 
 def set_agent_runner(agent_type: str, runner: AgentRunner) -> None:
@@ -255,6 +264,102 @@ def _persist_story_output(
         completed=True,
         output_summary=f"Generated {n} story proposals{extras_str}{persisted_str}.",
         proposed_story_ids=[r.proposed_story_id for r in valid_proposals],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Board writer (Phase 4) — approval-gated GitHub Project V2 writes
+# ---------------------------------------------------------------------------
+#
+# The runner refuses to call ``github_api.create_story`` unless
+# ``gate_board_write`` returns an approval id for
+# ``(handover.id, task.id, action=WRITE_GITHUB_PROJECT_V2)``. It consumes
+# the persisted batch verbatim — no regeneration, no mutation of story
+# fields. Each successful write is recorded atomically (receipt + status
+# transition to ``written``) so a partial-failure re-run only writes the
+# tail.
+
+
+def _run_board_writer(
+    task: HandoverTask,
+    handover: HandoverDocument,
+    config: AlfredConfig,
+    db_path: Optional[str],
+) -> TaskResult:
+    from alfred.tools.board_write_contract import (
+        ApprovalRequiredError,
+        gate_board_write,
+        mark_proposal_approved,
+    )
+    from alfred.tools.github_api import create_story
+    from alfred.tools.persistence import record_proposal_write
+
+    effective_db = db_path or (config.database.path or None)
+    if not effective_db:
+        return TaskResult(
+            completed=False,
+            output_summary="Board writer requires a database path; none configured.",
+        )
+
+    try:
+        approval_id, batch = gate_board_write(
+            effective_db, handover_id=handover.id, task_id=task.id
+        )
+    except ApprovalRequiredError as exc:
+        return TaskResult(
+            completed=False,
+            output_summary=f"Board write refused — {exc}",
+        )
+
+    if not batch:
+        return TaskResult(
+            completed=True,
+            output_summary="All proposals already written; no work to do.",
+        )
+
+    org = config.github.org
+    project_number = config.github.project_number
+    token = os.environ.get(config.github.token_env_var, "")
+    if not org or not project_number or not token:
+        return TaskResult(
+            completed=False,
+            output_summary=(
+                "GitHub config incomplete (org / project_number / token); "
+                "cannot write board."
+            ),
+        )
+
+    # Stamp pending rows with the approval id before writing. Rows already
+    # at 'approved' (e.g. from a prior partial run) are left untouched.
+    for record in batch:
+        if record.approval_status == "pending":
+            mark_proposal_approved(
+                effective_db,
+                proposed_story_id=record.proposed_story_id,
+                approval_id=approval_id,
+            )
+
+    written: list[tuple[str, str, str]] = []
+    for record in batch:
+        item_id = create_story(org, project_number, record.title, token)
+        record_proposal_write(
+            effective_db,
+            proposed_story_id=record.proposed_story_id,
+            github_item_id=item_id,
+            github_title=record.title,
+            approval_decision_id=approval_id,
+        )
+        written.append((record.proposed_story_id, item_id, record.title))
+
+    summary = (
+        f"Wrote {len(written)} proposal(s) to GitHub Project V2 "
+        f"(approval={approval_id}). "
+        + "; ".join(f"{pid}->{gid}" for pid, gid, _ in written)
+    )
+    return TaskResult(
+        completed=True,
+        output_summary=summary,
+        proposed_story_ids=[pid for pid, _, _ in written],
     )
 
 

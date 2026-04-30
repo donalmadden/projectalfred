@@ -29,7 +29,6 @@ Lifecycle invariants enforced here:
 """
 from __future__ import annotations
 
-import sqlite3
 from contextlib import closing
 from typing import Optional
 
