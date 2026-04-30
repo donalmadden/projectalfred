@@ -183,7 +183,7 @@ def test_run_demo_happy_path_prints_gate_and_returns_zero(tmp_path: Path) -> Non
     assert "[PERSIST] Wrote" in output
     assert "[COMPILE] HandoverDocument compiled" in output
     assert "[ORCHESTRATE] Dispatching TASK-SEED-BOARD-001" in output
-    assert "7 proposals generated" in output
+    assert "7 proposals persisted" in output
     assert "APPROVAL GATE" in output
     assert (
         "Alfred has proposed 7 draft backlog items for the Customer Onboarding Portal."

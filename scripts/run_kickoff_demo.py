@@ -32,7 +32,11 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import init_demo_workspace  # noqa: E402
 from alfred import orchestrator  # noqa: E402
-from alfred.orchestrator import orchestrate, set_agent_runner  # noqa: E402
+from alfred.orchestrator import (  # noqa: E402
+    _persist_story_output,
+    orchestrate,
+    set_agent_runner,
+)
 from alfred.schemas.agent import (  # noqa: E402
     BoardState,
     QualityRubric,
@@ -45,6 +49,8 @@ from alfred.schemas.handover import (  # noqa: E402
     HandoverTask,
     TaskResult,
 )
+from alfred.schemas.story_proposal import StoryProposalRecord  # noqa: E402
+from alfred.tools.persistence import list_story_proposals  # noqa: E402
 
 CHARTER_SRC: Path = REPO_ROOT / "docs" / "active" / "CUSTOMER_ONBOARDING_PORTAL_CHARTER.md"
 OUTLINE_SRC: Path = REPO_ROOT / "docs" / "active" / "KICKOFF_HANDOVER_OUTLINE.md"
@@ -190,6 +196,12 @@ def _install_capture_runner(
     ``inner_runner`` lets tests inject a deterministic story generator. When
     omitted, the wrapper calls the real ``run_story_generator`` with the same
     inputs the orchestrator's default runner constructs.
+
+    The runner forwards the structured output through
+    ``orchestrator._persist_story_output`` so persistence + ``TaskResult``
+    linkage happen the same way they would on the default code path. The
+    ``captured`` list is retained as a runtime test signal (was the runner
+    invoked?), but the gate review reads from SQLite, not from this list.
     """
     from alfred.schemas.agent import RAGChunk
 
@@ -220,11 +232,8 @@ def _install_capture_runner(
                 story_input, provider=provider, model=model, db_path=db_path
             )
         captured.append(out)
-        summary = (
-            f"Generated {len(out.stories)} stories; "
-            f"{len(out.stories_failing_rubric)} failed rubric."
-        )
-        return TaskResult(completed=True, output_summary=summary)
+        effective_db = db_path or (config.database.path or None)
+        return _persist_story_output(task, handover, out, db_path=effective_db)
 
     set_agent_runner(STORY_GENERATOR_AGENT, runner)
 
@@ -248,6 +257,24 @@ def render_proposal_listing(output: StoryGeneratorOutput) -> str:
         if story.description:
             lines.append(f"     {story.description}")
         for ac in story.acceptance_criteria:
+            lines.append(f"     - {ac}")
+    return "\n".join(lines)
+
+
+def render_persisted_listing(records: list[StoryProposalRecord]) -> str:
+    """Render persisted proposals for the gate review surface.
+
+    Mirrors :func:`render_proposal_listing` but reads from durable
+    ``StoryProposalRecord`` rows so pause/resume produces the same output
+    without re-invoking the story generator.
+    """
+    lines: list[str] = []
+    lines.append(f"[STORIES] {len(records)} proposals persisted:")
+    for i, rec in enumerate(records, 1):
+        lines.append(f"  {i}. {rec.title} ({rec.story_points} pts)")
+        if rec.description:
+            lines.append(f"     {rec.description}")
+        for ac in rec.acceptance_criteria:
             lines.append(f"     - {ac}")
     return "\n".join(lines)
 
@@ -279,14 +306,25 @@ def persist_kickoff_handover(workspace: Path, markdown: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def default_demo_config() -> AlfredConfig:
+def workspace_db_path(workspace: Path) -> Path:
+    """Return the SQLite path Alfred uses for demo runtime state.
+
+    Lives under ``<workspace>/.alfred/state.sqlite3`` — a hidden subdir so
+    it doesn't collide with the docs-as-protocol surface (``docs/``,
+    ``README.md``). The directory is created lazily by the persistence
+    layer on first write.
+    """
+    return workspace / ".alfred" / "state.sqlite3"
+
+
+def default_demo_config(workspace: Optional[Path] = None) -> AlfredConfig:
     cfg = AlfredConfig()
     cfg.llm.provider = "anthropic"
     cfg.llm.model = "claude-sonnet-4-6"
     cfg.github.org = ""
     cfg.github.project_number = 0
     cfg.rag.index_path = ""
-    cfg.database.path = ""
+    cfg.database.path = str(workspace_db_path(workspace)) if workspace else ""
     return cfg
 
 
@@ -354,7 +392,7 @@ def run_demo(
     orchestrator._AGENT_RUNNERS.clear()
     _install_capture_runner(captured, inner_runner=inner_story_runner)
 
-    cfg = config if config is not None else default_demo_config()
+    cfg = config if config is not None else default_demo_config(workspace)
 
     # 5. Dispatch via orchestrate(...).
     print(
@@ -376,11 +414,68 @@ def run_demo(
             f"{KICKOFF_TASK_ID} produced {n} proposals; expected 6–8."
         )
 
-    # 6. Approval gate — print proposals and verbatim prompt; halt cleanly.
-    print(render_proposal_listing(output), file=out)
+    # 6. Approval gate — read persisted proposals (no regeneration). When a
+    #    db_path is configured we render from durable state so a resumed
+    #    process produces identical output. Without persistence we fall
+    #    back to the in-memory output for harness back-compatibility.
+    db_path = cfg.database.path or None
+    if db_path:
+        records = list_story_proposals(
+            db_path,
+            handover_id=handover.id,
+            task_id=KICKOFF_TASK_ID,
+        )
+        print(render_persisted_listing(records), file=out)
+    else:
+        print(render_proposal_listing(output), file=out)
     print("", file=out)
     print("APPROVAL GATE", file=out)
     print(APPROVAL_PROMPT_TEMPLATE.format(n=n), file=out)
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Review-only path — read persisted proposals and render the gate without
+# invoking the story generator. Demonstrates pause/resume integrity.
+# ---------------------------------------------------------------------------
+
+
+def review_only_demo(
+    workspace: Path,
+    *,
+    config: Optional[AlfredConfig] = None,
+    out_stream: Optional[IO[str]] = None,
+    handover_id: str = KICKOFF_HANDOVER_ID,
+    task_id: str = KICKOFF_TASK_ID,
+) -> int:
+    """List persisted proposals for ``(handover_id, task_id)`` and print
+    the verbatim approval prompt. Does not run ``orchestrate(...)``, does
+    not import the story generator. Returns 0 when proposals exist; raises
+    :class:`HarnessError` when the workspace has no persisted state to
+    review.
+    """
+    out: IO[str] = out_stream if out_stream is not None else sys.stdout
+    cfg = config if config is not None else default_demo_config(workspace)
+    db_path = cfg.database.path or None
+    if not db_path:
+        raise HarnessError(
+            "Review-only mode requires a configured database path. "
+            "Run the harness without --review-only first to seed it."
+        )
+
+    records = list_story_proposals(db_path, handover_id=handover_id, task_id=task_id)
+    if not records:
+        raise HarnessError(
+            f"No persisted proposals for handover_id={handover_id!r} "
+            f"task_id={task_id!r}. Run the harness without --review-only "
+            "first to generate and persist proposals."
+        )
+
+    print(f"[REVIEW] Reading persisted proposals from {db_path}", file=out)
+    print(render_persisted_listing(records), file=out)
+    print("", file=out)
+    print("APPROVAL GATE", file=out)
+    print(APPROVAL_PROMPT_TEMPLATE.format(n=len(records)), file=out)
     return 0
 
 
@@ -399,12 +494,23 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Path to the demo project root directory (must be initialised first).",
     )
+    parser.add_argument(
+        "--review-only",
+        action="store_true",
+        help=(
+            "Skip generation; list persisted proposals for the kickoff "
+            "handover and re-print the approval prompt. Demonstrates that "
+            "review across pause/resume does not regenerate stories."
+        ),
+    )
     return parser
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.review_only:
+            return review_only_demo(args.workspace)
         return run_demo(args.workspace)
     except HarnessError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
