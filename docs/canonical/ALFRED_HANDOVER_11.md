@@ -199,15 +199,23 @@ pyright
 > cold-start from this artifact alone.
 
 **What worked:**
-- *executor to fill*
+- The Phase 3 schema slots (`approval_status`, `approval_decision_id`, `approved_at`, `written_at`) were dimensioned correctly: Phase 4 added zero columns to `story_proposals`. Only one new table (`proposal_write_receipts`) was needed.
+- Linkage via `(handover_id, action_type=WRITE_GITHUB_PROJECT_V2, item_id=task_id)` reused the existing `pending_approvals` table verbatim — no API or schema change to the approval surface.
+- Splitting the contract into a thin `board_write_contract.py` module (gate + lifecycle guards, no GitHub) before the orchestrator runner kept the precondition tests independent of the GraphQL fakes.
+- The atomic `record_proposal_write` helper (single SQLite transaction: precondition check → insert receipt → mark written) made idempotent resume after a partial failure trivial — the writer just consumes whatever `select_writeable_proposals` returns on each run.
 
 **What was harder than expected:**
-- *executor to fill*
+- The harness arc wanted a refusal step *and* idempotent re-runs in the same code path, which conflicted: on a second run the prior approval is still valid, so the writer no longer refuses. Resolved by short-circuiting the arc when all proposals are already `written` rather than fabricating a refusal.
+- Deciding whether to stamp `pending → approved` before or after the GitHub-config check — chose "after" so a missing token leaves rows untouched at `pending`. A subsequent run with a token replays cleanly.
 
 **Decisions made during execution (deviations from this plan):**
-- *executor to fill — each deviation must include: what changed, why, who approved*
+- **No write-receipt fields added to `story_proposals`.** The plan listed receipts under Task 2 without prescribing a table shape. Chose a separate `proposal_write_receipts` table with a 1:1 FK to keep `story_proposals` focused on lifecycle state and receipts focused on traceability. Single-author judgement; no review needed at this size.
+- **Did not modify `/approvals/*` endpoints.** The plan allowed "API route(s) and/or scripts/run_kickoff_demo.py" — chose harness-only because the existing endpoints already accept `action_type=WRITE_GITHUB_PROJECT_V2` as an opaque string. Adding a typed route would have been speculative scope.
+- **Arc short-circuit on already-written batches** (see "harder than expected"). Self-approved.
 
 **Forward plan:**
-- *executor to fill*
+- Phase 5: rehearsal/runbook + recorded transcript of `--phase4` against a real GitHub Project. The harness already prints all the evidence the rehearsal needs; Phase 5 just needs to script the end-to-end demo and capture it.
+- Smaller follow-up: surface `list_write_receipts` on the dashboard endpoint so a reviewer can see "what was written and when" without shelling into SQLite. Out-of-scope for Phase 4 by design (Hard Rule 5: don't broaden scope).
+- Open question for Phase 5/6: when re-generating proposals in a new sprint, should an old approval row for `WRITE_GITHUB_PROJECT_V2` + `TASK-SEED-BOARD-001` be invalidated, or do we encode the proposal_batch_id into `item_id`? Current scheme (item_id=task_id) works for the kickoff because the task fires once. Multi-sprint reuse needs a decision before Phase 6.
 
 **next_handover_id:** ALFRED_HANDOVER_12
