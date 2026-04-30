@@ -15,7 +15,7 @@
 **Reference Documents:**
 - `docs/canonical/ALFRED_HANDOVER_8.md` — Phase 1 canonical baseline; confirms charter, layout, and handover-outline freeze decisions that Phase 2 inherits
 - `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` — multi-phase build plan; authoritative scope brief for all phases
-- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md` — Phase 0 freeze record; all five decisions are locked
+- The archived Phase 0 freeze record for the blank-project kickoff demo — all five decisions are locked
 - `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md` — frozen charter text the harness copies verbatim into the demo workspace
 - `docs/active/DEMO_PROJECT_LAYOUT.md` — frozen Phase 1 filesystem spec the harness must reproduce exactly
 - `docs/active/KICKOFF_HANDOVER_OUTLINE.md` — frozen Phase 1 kickoff-handover structure, including `TASK-SEED-BOARD-001` and the verbatim approval-gate wording

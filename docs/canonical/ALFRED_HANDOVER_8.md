@@ -13,7 +13,7 @@
 
 **Reference Documents:**
 - `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` — multi-phase build plan; this handover executes Phase 1 only
-- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md` — Phase 0 freeze record; every decision in that document is locked and may not be revisited here
+- The archived Phase 0 freeze record for the blank-project kickoff demo — every decision in that record is locked and may not be revisited here
 - `docs/canonical/ALFRED_HANDOVER_7.md` — Phase 7/8 infrastructure baseline; confirms deployment surface is stable before demo work begins
 - `docs/active/FACTUAL_VALIDATOR_FUTURE_TASK_PLANNING_REALISM.md` — planning-realism constraints still in effect
 
@@ -53,7 +53,7 @@ The following modules and files **exist today**:
 - `docs/DOCS_POLICY.md` and `docs/DOCS_MANIFEST.yaml` exist today
 - `docs/protocol/OPERATOR_RUNBOOK.md` exists today
 - `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` exists today — the governing Phase 1–5 build plan
-- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md` exists today — the ratified Phase 0 freeze record
+- An archived Phase 0 freeze record exists today under `docs/archive/` — retained for traceability while its decisions remain ratified history
 - `docs/canonical/ALFRED_HANDOVER_7.md` exists today — Phase 7 canonical record
 - Type checker in use: `pyright` (not `mypy`)
 

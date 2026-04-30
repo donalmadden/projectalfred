@@ -71,6 +71,28 @@ def test_complete_retries_on_validation_error(monkeypatch: pytest.MonkeyPatch) -
     assert state["calls"] == 2
 
 
+def test_complete_retry_prompt_includes_validation_feedback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompts: list[str] = []
+
+    def fake(prompt: str, output_schema, model: str) -> tuple[dict[str, Any], int]:
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            return {"value": "x"}, 0
+        return {"value": "x", "count": 1}, 0
+
+    monkeypatch.setitem(llm._PROVIDERS, "fake", fake)
+
+    result = llm.complete("base prompt", _Echo, provider="fake", model="m", max_retries=1)
+
+    assert result.count == 1
+    assert prompts[0] == "base prompt"
+    assert "STRUCTURED OUTPUT CORRECTION" in prompts[1]
+    assert "`count`" in prompts[1]
+    assert "Do not return an empty object" in prompts[1]
+
+
 def test_complete_raises_after_max_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _install_fake(
         monkeypatch,

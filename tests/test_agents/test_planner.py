@@ -201,6 +201,18 @@ def test_prompt_references_methodology_properties() -> None:
     assert "Reasoning/execution isolation" in prompt
 
 
+def test_prompt_includes_response_contract() -> None:
+    captured = _capture_prompt()
+    planner.run_planner(_minimal_input(), provider="fake", model="m")
+
+    prompt = captured[0]
+    assert "RESPONSE CONTRACT" in prompt
+    assert "draft_handover_markdown" in prompt
+    assert "cite every authoritative source doc" in prompt
+    assert "protocol source of truth" in prompt
+    assert "Never return an empty object" in prompt
+
+
 def test_prompt_includes_claim_taxonomy_and_placement_rules() -> None:
     captured = _capture_prompt()
     planner.run_planner(_minimal_input(), provider="fake", model="m")

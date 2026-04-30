@@ -283,6 +283,17 @@ def _build_prompt(input: PlannerInput) -> str:
         )
 
     parts.append(
+        "RESPONSE CONTRACT:\n"
+        "Return a `PlannerOutput` tool payload.\n"
+        "  - `draft_handover_markdown` is REQUIRED and must be a non-empty markdown string containing the full draft.\n"
+        "  - If you do not propose a sprint plan, set `sprint_plan` to `null`.\n"
+        "  - If there are no open questions or no task decomposition items, return `[]` for those fields.\n"
+        "  - In `Reference Documents`, cite every authoritative source doc that materially constrains the phase. If an inherited frozen doc still controls workspace shape, input text, or approval wording, cite it directly instead of only citing a later summary handover.\n"
+        "  - If the phase introduces persisted runtime state, describe it as execution state that supports the workflow. Do not silently replace the docs/handover protocol source of truth unless the provided source docs explicitly say so.\n"
+        "  - Never return an empty object or omit `draft_handover_markdown`."
+    )
+
+    parts.append(
         "TASK:\n"
         "Produce a draft handover document in markdown. Include:\n"
         "- Sprint context and goals\n"

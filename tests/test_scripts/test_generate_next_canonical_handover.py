@@ -23,7 +23,7 @@ def test_expected_previous_is_one_less() -> None:
 
 
 def test_source_filename_tracks_previous_canonical_handover() -> None:
-    assert gnch.SOURCE_PATH.name == "ALFRED_HANDOVER_7.md"
+    assert gnch.SOURCE_PATH.name == f"{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
     assert "canonical" in gnch.SOURCE_PATH.parts
 
 
@@ -45,16 +45,19 @@ def test_failed_output_path_uses_failed_candidate_suffix() -> None:
 
 def test_parse_args_defaults_target_canonical_output() -> None:
     args = gnch.parse_args([])
-    assert Path(args.output) == Path("docs/canonical/ALFRED_HANDOVER_8.md")
-    assert Path(args.source) == Path("docs/canonical/ALFRED_HANDOVER_7.md")
-    assert Path(args.failed_output) == Path("docs/archive/ALFRED_HANDOVER_8_FAILED_CANDIDATE.md")
+    assert Path(args.output) == Path(f"docs/canonical/{gnch.EXPECTED_HANDOVER_ID}.md")
+    assert Path(args.source) == Path(f"docs/canonical/{gnch.EXPECTED_PREVIOUS_HANDOVER}.md")
+    assert Path(args.failed_output) == Path(
+        f"docs/archive/{gnch.EXPECTED_HANDOVER_ID}_FAILED_CANDIDATE.md"
+    )
     assert args.historical_context_mode == "summary"
 
 
-def test_sprint_goal_is_scoped_to_demo_phase_1() -> None:
-    assert "Phase 1 of the blank-project kickoff demo plan" in gnch.SPRINT_GOAL
-    assert "Phase 2–5 deliverables" in gnch.SPRINT_GOAL
-    assert "blank GitHub Project board" in gnch.SPRINT_GOAL
+def test_sprint_goal_is_scoped_to_demo_phase_3() -> None:
+    assert "Phase 3 only" in gnch.SPRINT_GOAL
+    assert "Phase 4 (GitHub Project V2 write path)" in gnch.SPRINT_GOAL
+    assert "persisted `StoryProposal` records" in gnch.SPRINT_GOAL
+    assert "do not replace the demo project's docs surface" in gnch.SPRINT_GOAL
 
 
 def test_context_attempt_order_degrades_to_none() -> None:
@@ -82,12 +85,12 @@ def test_load_historical_context_summary_is_bounded(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    summary = gnch.load_historical_context(source, mode="summary", max_chars=2500)
+    summary = gnch.load_historical_context(source, mode="summary", max_chars=4500)
     assert summary is not None
     assert gnch.DEMO_PLAN_GROUNDING in summary
     assert "Historical source:" in summary
     assert "Historical task overview:" in summary
-    assert len(summary) <= 2530
+    assert len(summary) <= 4530
     assert "`docs/canonical/ALFRED_HANDOVER_6.md`" in summary
 
 
@@ -102,7 +105,7 @@ def test_load_historical_context_drops_archive_only_reference_bullets(tmp_path: 
         encoding="utf-8",
     )
 
-    summary = gnch.load_historical_context(source, mode="summary", max_chars=2500)
+    summary = gnch.load_historical_context(source, mode="summary", max_chars=4500)
 
     assert summary is not None
     assert "FAILED_CANDIDATE" not in summary
@@ -114,6 +117,65 @@ def test_load_historical_context_none_mode_returns_none(tmp_path: Path) -> None:
     source.parent.mkdir(parents=True)
     source.write_text("# x\n", encoding="utf-8")
     assert gnch.load_historical_context(source, mode="none") is None
+
+
+def test_load_historical_context_skips_when_source_already_in_authoritative_scope(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_9.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("# x\n", encoding="utf-8")
+    source_key = gnch._repo_relative_doc_path(source)
+
+    summary = gnch.load_historical_context(
+        source,
+        mode="summary",
+        excluded_doc_paths=(source_key,),
+    )
+
+    assert summary is None
+
+
+def test_build_planner_context_deduplicates_overlap_between_scope_and_history(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_9.md"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "# Alfred's Handover Document #9\n\n"
+        "## TASK OVERVIEW\n"
+        "| # | Task | Deliverable |\n"
+        "|---|---|---|\n"
+        "| 1 | Keep | `docs/canonical/ALFRED_HANDOVER_10.md` |\n",
+        encoding="utf-8",
+    )
+
+    scope = (
+        "AUTHORITATIVE\n"
+        "----- BEGIN docs/canonical/ALFRED_HANDOVER_9.md -----\n"
+        "body"
+    )
+
+    context, historical_chars = gnch.build_planner_context(scope, source, mode="summary")
+
+    assert context == scope
+    assert historical_chars == 0
+
+
+def test_load_demo_plan_context_builds_targeted_authoring_packet() -> None:
+    packet = gnch.load_demo_plan_context()
+
+    assert packet.packet_char_count < packet.source_char_count
+    assert "===== AUTHORITATIVE SOURCE DOC MAP =====" in packet.text
+    assert "Reference-doc expectation:" in packet.text
+    assert "Source-of-truth expectation:" in packet.text
+    assert "===== PASS 1 — STRUCTURED FACTS =====" in packet.text
+    assert "===== PASS 2 — VERBATIM SOURCE SECTIONS =====" in packet.text
+    assert "TASK 2 — Demo Execution Harness > Implementation" in packet.text
+    assert "### Verification" not in packet.text
+    assert "docs/canonical/ALFRED_HANDOVER_9.md" in packet.source_doc_paths
 
 
 def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:

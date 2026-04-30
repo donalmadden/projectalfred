@@ -1,11 +1,10 @@
 """Generate the canonical handover that plans Phase 3 of the blank-project kickoff demo.
 
 Follows the same validated canonical-generation path as the prior Phase 2
-generator, but the planner is now grounded on four authoritative scope
-sources — the demo plan, the Phase 0 freeze record, the Phase 1 frozen
-specs (charter, demo-project layout, kickoff handover outline), and the
-Phase 2 canonical handover (`docs/canonical/ALFRED_HANDOVER_9.md`) which
-documents the now-shipped execution harness Phase 3 must persist around
+generator, but the planner is now grounded on the live demo plan, the
+Phase 1 frozen specs (charter, demo-project layout, kickoff handover
+outline), and the Phase 2 canonical handover (`docs/canonical/ALFRED_HANDOVER_9.md`)
+which documents the now-shipped execution harness Phase 3 must persist around
 — and seeded with the previous canonical handover as continuity context
 only. The target output is `docs/canonical/ALFRED_HANDOVER_10.md`,
 written only after the structural and grounding validators pass.
@@ -36,6 +35,12 @@ import yaml
 
 from alfred.schemas.config import AlfredConfig
 from alfred.tools.docs_policy import load_docs_policy_entries, resolve_policy_entry
+from alfred.tools.handover_authoring_context import (
+    AuthoringContextPacket,
+    DocumentSelectionSpec,
+    SectionSelector,
+    build_authoring_context_packet,
+)
 from alfred.tools.rag import index_corpus
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -54,9 +59,6 @@ FAILED_FILENAME = f"{EXPECTED_HANDOVER_ID}_FAILED_CANDIDATE.md"
 DEFAULT_CONTEXT_CHARS = 6000
 
 DEMO_PLAN_PATH = REPO_ROOT / "docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md"
-DEMO_FROZEN_SCENARIO_PATH = (
-    REPO_ROOT / "docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md"
-)
 DEMO_PHASE1_FROZEN_PATHS: tuple[Path, ...] = (
     REPO_ROOT / "docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md",
     REPO_ROOT / "docs/active/DEMO_PROJECT_LAYOUT.md",
@@ -68,6 +70,96 @@ DEMO_PHASE1_FROZEN_PATHS: tuple[Path, ...] = (
 # Phase 3 cannot revisit Phase 2's harness shape, only durably persist
 # the StoryProposal items that harness already surfaces at the gate.
 DEMO_PHASE2_CANONICAL_PATH: Path = REPO_ROOT / "docs/canonical/ALFRED_HANDOVER_9.md"
+AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
+    DocumentSelectionSpec(
+        source_path=DEMO_PLAN_PATH,
+        selectors=(
+            SectionSelector("Demo Outcome We Are Building Toward", "narrative arc"),
+            SectionSelector("Hard Rules", "locked constraints", render_mode="verbatim_only"),
+            SectionSelector("Out Of Scope", "locked boundaries"),
+            SectionSelector(
+                "Minimal Viable Demo Slice",
+                "critical path",
+                render_mode="verbatim_only",
+            ),
+            SectionSelector("Required Functional Capabilities", "runtime obligations"),
+            SectionSelector(
+                "Phase Plan > Phase 3 — Carry Proposed Stories As First-Class Runtime State",
+                "active phase scope",
+            ),
+            SectionSelector(
+                "Phase Plan > Phase 4 — Close The HITL Gate Into GitHub Board Writes",
+                "next-phase boundary",
+            ),
+            SectionSelector("Definition Of Demo-Done", "observable completion evidence"),
+            SectionSelector("Definition Of Failure", "failure boundaries"),
+            SectionSelector("Final Guidance", "demo framing"),
+        ),
+    ),
+    DocumentSelectionSpec(
+        source_path=DEMO_PLAN_PATH.parent / "CUSTOMER_ONBOARDING_PORTAL_CHARTER.md",
+        selectors=(
+            SectionSelector("Business Context", "domain context"),
+            SectionSelector("Primary User", "primary user constraints"),
+            SectionSelector("Success Metric", "success target"),
+            SectionSelector("Known Constraints", "charter constraints"),
+            SectionSelector("Explicit Non-Goals", "charter boundaries"),
+        ),
+    ),
+    DocumentSelectionSpec(
+        source_path=DEMO_PLAN_PATH.parent / "DEMO_PROJECT_LAYOUT.md",
+        selectors=(
+            SectionSelector("Frozen Layout", "workspace shape"),
+            SectionSelector("File And Directory Purposes", "workspace semantics"),
+            SectionSelector("CHARTER.md Source", "charter copy rule", render_mode="verbatim_only"),
+            SectionSelector("Directory Decisions", "layout constraints"),
+        ),
+    ),
+    DocumentSelectionSpec(
+        source_path=DEMO_PLAN_PATH.parent / "KICKOFF_HANDOVER_OUTLINE.md",
+        selectors=(
+            SectionSelector("CONTEXT - READ THIS FIRST", "kickoff framing"),
+            SectionSelector("WHAT EXISTS TODAY", "kickoff starting state"),
+            SectionSelector("KICKOFF GOALS", "kickoff goals"),
+            SectionSelector("PROPOSED BACKLOG - CUSTOMER ONBOARDING PORTAL", "benchmark backlog"),
+            SectionSelector("BOARD-SEEDING TASK", "task contract", render_mode="verbatim_only"),
+            SectionSelector("APPROVAL GATE", "approval wording", render_mode="verbatim_only"),
+            SectionSelector("WHAT NOT TO DO", "kickoff guardrails"),
+            SectionSelector("POST-MORTEM", "required executor close-out"),
+        ),
+    ),
+    DocumentSelectionSpec(
+        source_path=DEMO_PHASE2_CANONICAL_PATH,
+        selectors=(
+            SectionSelector(
+                "WHAT EXISTS TODAY > Module & Agent Inventory",
+                "runtime inventory",
+            ),
+            SectionSelector(
+                "WHAT EXISTS TODAY > Phase 1 Deliverables Inherited (Do Not Revisit)",
+                "inherited deliverables",
+            ),
+            SectionSelector(
+                "WHAT EXISTS TODAY > Key Design Decisions Inherited (Do Not Revisit)",
+                "inherited design decisions",
+            ),
+            SectionSelector("HARD RULES", "phase 2 hard constraints"),
+            SectionSelector("WHAT THIS PHASE PRODUCES", "phase 2 outputs"),
+            SectionSelector("TASK OVERVIEW", "task map"),
+            SectionSelector(
+                "TASK 2 — Demo Execution Harness > Implementation",
+                "execution harness shape",
+            ),
+            SectionSelector(
+                "TASK 2 — Demo Execution Harness > Implementation Notes on the Orchestrator Interface",
+                "orchestrator interface details",
+                render_mode="verbatim_only",
+            ),
+            SectionSelector("WHAT NOT TO DO", "phase 2 guardrails"),
+            SectionSelector("POST-MORTEM", "phase 3 carry-forward"),
+        ),
+    ),
+)
 
 
 def _resolve_manifest_doc_path(
@@ -124,7 +216,10 @@ SPRINT_GOAL = (
     "Phase 3 only: carry proposed stories as first-class runtime state so "
     "the approval gate review and the eventual Phase 4 board write read "
     "the same persisted `StoryProposal` records, with no regeneration "
-    "between gate and write. Concretely the handover must specify: "
+    "between gate and write. Those persisted records are runtime execution "
+    "state for continuity across the gate and into Phase 4; they do not "
+    "replace the demo project's docs surface or the handover artifact as "
+    "Alfred's protocol source of truth. Concretely the handover must specify: "
     "(a) the persistence schema for `StoryProposal` records (Pydantic "
     "model + SQLite table) including linkage back to the source "
     "handover_id and task_id and forward to an approval verdict slot, "
@@ -148,13 +243,10 @@ SPRINT_GOAL = (
 )
 
 DEMO_PLAN_GROUNDING = (
-    "Authoritative scope sources for this handover (full text included "
-    "below in the planner context):\n"
+    "Authoritative scope sources for this handover (structured facts and "
+    "selected verbatim sections included below in the planner context):\n"
     "- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` — multi-phase "
     "build plan; this handover plans Phase 3 only.\n"
-    "- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md` "
-    "— Phase 0 freeze record (ratified). All five Phase 0 decisions are "
-    "locked and may not be revisited.\n"
     "- `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md` — frozen Phase 1 "
     "charter content the harness feeds into Alfred at runtime.\n"
     "- `docs/active/DEMO_PROJECT_LAYOUT.md` — frozen Phase 1 spec for the "
@@ -170,6 +262,16 @@ DEMO_PLAN_GROUNDING = (
     "the `set_agent_runner` story-capture pattern, and the live-run "
     "evidence at the approval gate. Phase 3 builds the persistence layer "
     "around this harness; the harness shape itself is locked.\n"
+    "Reference-doc rule for the generated canonical: cite every "
+    "authoritative source doc that materially constrains the phase. If the "
+    "phase still relies directly on the frozen charter or frozen layout, "
+    "name those docs directly in `Reference Documents` instead of collapsing "
+    "them only into `docs/canonical/ALFRED_HANDOVER_9.md`.\n"
+    "Source-of-truth rule for Phase 3: the persisted proposal store is "
+    "runtime execution state used to survive the approval gate and support "
+    "the later Phase 4 write. It must not be described as replacing the "
+    "project docs surface or the handover artifact as Alfred's protocol "
+    "source of truth unless a source document explicitly redefines that.\n"
     "Treat the contents of those docs as the source of truth for scope. "
     "Do not invent deliverables outside Phase 3. Do not revisit Phase 0 "
     "freeze decisions, Phase 1 frozen specs, or Phase 2's harness shape. "
@@ -201,6 +303,15 @@ def resolve_repo_path(path: Path) -> Path:
     if path.is_absolute():
         return path
     return REPO_ROOT / path
+
+
+def _repo_relative_doc_path(path: Path) -> str:
+    """Return ``path`` relative to ``REPO_ROOT`` when possible."""
+    resolved = resolve_repo_path(path)
+    try:
+        return resolved.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return resolved.as_posix()
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -468,95 +579,41 @@ def normalise_generated_markdown(markdown: str) -> str:
     return rewritten
 
 
-def load_demo_plan_context() -> str:
-    """Return the full text of the demo plan + Phase 0 freeze + Phase 1 specs + Phase 2 canonical as a labeled scope block.
-
-    This is the planner's authoritative scope input. Unlike historical
-    continuity context, it is not truncated — the planner needs the full
-    Phase 3 deliverables, the full Phase 0 freeze decisions, the full
-    Phase 1 frozen specs (charter, demo-project layout, kickoff handover
-    outline), and the full Phase 2 canonical handover (which documents
-    the shipped harness Phase 3 must persist around) to produce a
-    faithful canonical handover.
-    """
-    plan_text = (
-        DEMO_PLAN_PATH.read_text(encoding="utf-8") if DEMO_PLAN_PATH.is_file() else ""
+def load_demo_plan_context() -> AuthoringContextPacket:
+    """Build a deterministic authoring packet from the authoritative docs."""
+    existing_specs = tuple(
+        spec
+        for spec in AUTHORITATIVE_SCOPE_SELECTION_SPECS
+        if spec.source_path.is_file()
     )
-    frozen_text = (
-        DEMO_FROZEN_SCENARIO_PATH.read_text(encoding="utf-8")
-        if DEMO_FROZEN_SCENARIO_PATH.is_file()
-        else ""
+    if not existing_specs:
+        return AuthoringContextPacket(
+            text="",
+            source_doc_paths=(),
+            selected_sections=(),
+            facts=(),
+            source_char_count=0,
+            packet_char_count=0,
+        )
+    return build_authoring_context_packet(
+        existing_specs,
+        repo_root=REPO_ROOT,
+        intro_lines=(
+            "===== AUTHORITATIVE PHASE 3 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
+            "Pass 1 indexed the authoritative docs by headings, rules, task specs, inherited constraints, and phase-detail sections.",
+            "Pass 2 selected only the sections needed to author the Phase 3 canonical handover and rendered structured facts plus verbatim source excerpts.",
+            "The source docs remain authoritative. The extracted packet is a deterministic view over those docs, not a replacement for them.",
+            "",
+            "===== AUTHORITATIVE SOURCE DOC MAP =====",
+            "- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` — Phase 3 scope, hard rules, done/failure conditions.",
+            "- `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md` — frozen kickoff charter input; still authoritative when describing what the harness reads.",
+            "- `docs/active/DEMO_PROJECT_LAYOUT.md` — frozen workspace-shape contract; still authoritative when describing docs surface and external-workspace paths.",
+            "- `docs/active/KICKOFF_HANDOVER_OUTLINE.md` — frozen board-seeding task and verbatim approval-gate wording.",
+            "- `docs/canonical/ALFRED_HANDOVER_9.md` — ratified Phase 2 harness behavior and explicit Phase 3 follow-ups.",
+            "Reference-doc expectation: the generated canonical should cite every authoritative source doc materially relied upon by the phase, including inherited frozen docs such as the charter and layout when their constraints are used directly.",
+            "Source-of-truth expectation: persisted StoryProposal rows are runtime execution state for gate review and later board writes; they do not replace the demo project's docs surface or the handover artifact as Alfred's protocol source of truth.",
+        ),
     )
-    phase1_specs: list[tuple[str, str]] = []
-    for spec_path in DEMO_PHASE1_FROZEN_PATHS:
-        if spec_path.is_file():
-            phase1_specs.append(
-                (
-                    spec_path.relative_to(REPO_ROOT).as_posix(),
-                    spec_path.read_text(encoding="utf-8").rstrip(),
-                )
-            )
-    phase2_canonical_text = (
-        DEMO_PHASE2_CANONICAL_PATH.read_text(encoding="utf-8")
-        if DEMO_PHASE2_CANONICAL_PATH.is_file()
-        else ""
-    )
-    if (
-        not plan_text
-        and not frozen_text
-        and not phase1_specs
-        and not phase2_canonical_text
-    ):
-        return ""
-
-    blocks: list[str] = [
-        "===== AUTHORITATIVE PHASE 3 SCOPE — DO NOT TREAT AS HISTORICAL CONTEXT =====",
-        "The documents below define the source of truth for what this "
-        "handover must lock down. Read them as the scope brief, not as "
-        "historical narrative. Phase 0 (scenario freeze), Phase 1 "
-        "(kickoff handover shape, charter, demo-project layout), and "
-        "Phase 2 (execution harness) are already ratified; this handover "
-        "executes Phase 3 only — proposal persistence as first-class "
-        "runtime state.",
-    ]
-    if frozen_text:
-        blocks.extend(
-            [
-                "",
-                "----- BEGIN docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md -----",
-                frozen_text.rstrip(),
-                "----- END FROZEN SCENARIO -----",
-            ]
-        )
-    if plan_text:
-        blocks.extend(
-            [
-                "",
-                "----- BEGIN docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md -----",
-                plan_text.rstrip(),
-                "----- END DEMO PLAN -----",
-            ]
-        )
-    for rel_path, body in phase1_specs:
-        blocks.extend(
-            [
-                "",
-                f"----- BEGIN {rel_path} -----",
-                body,
-                f"----- END {rel_path} -----",
-            ]
-        )
-    if phase2_canonical_text:
-        blocks.extend(
-            [
-                "",
-                "----- BEGIN docs/canonical/ALFRED_HANDOVER_9.md (Phase 2 canonical, ratified) -----",
-                phase2_canonical_text.rstrip(),
-                "----- END PHASE 2 CANONICAL -----",
-            ]
-        )
-    blocks.append("===== END AUTHORITATIVE PHASE 3 SCOPE =====")
-    return "\n".join(blocks)
 
 
 def load_historical_context(
@@ -564,17 +621,20 @@ def load_historical_context(
     *,
     mode: str = "summary",
     max_chars: int = DEFAULT_CONTEXT_CHARS,
+    excluded_doc_paths: tuple[str, ...] = (),
 ) -> Optional[str]:
     """Load a bounded historical context block for the planner."""
     if not source_path.is_file():
         return None
     if mode == "none":
         return None
+    if _repo_relative_doc_path(source_path) in set(excluded_doc_paths):
+        return None
     text = source_path.read_text(encoding="utf-8")
     if mode == "full":
         return (
             "Update the next canonical handover so it matches the live repository "
-            "today. Preserve the new handover identity (`ALFRED_HANDOVER_9`) and "
+            f"today. Preserve the new handover identity (`{EXPECTED_HANDOVER_ID}`) and "
             "treat the previous canonical handover as continuity input, but prefer "
             "repo facts, validators, and git history over any stale prose.\n\n"
             f"{DEMO_PLAN_GROUNDING}\n\n"
@@ -657,6 +717,34 @@ def build_context_attempt_order(requested_mode: str) -> list[str]:
         "none": ["none"],
     }
     return orders[requested_mode]
+
+
+def build_planner_context(
+    authoritative_scope: AuthoringContextPacket | str,
+    source_path: Path,
+    *,
+    mode: str,
+    max_chars: int = DEFAULT_CONTEXT_CHARS,
+) -> tuple[Optional[str], int]:
+    """Assemble planner context while skipping duplicated continuity docs."""
+    if isinstance(authoritative_scope, str):
+        scope_text = authoritative_scope
+        source_rel = _repo_relative_doc_path(source_path)
+        scope_doc_paths = (source_rel,) if source_rel in scope_text else ()
+    else:
+        scope_text = authoritative_scope.text
+        scope_doc_paths = authoritative_scope.source_doc_paths
+
+    historical_context = load_historical_context(
+        source_path,
+        mode=mode,
+        max_chars=max_chars,
+        excluded_doc_paths=scope_doc_paths,
+    )
+    parts = [block for block in (scope_text, historical_context) if block]
+    context = "\n\n".join(parts) if parts else None
+    historical_chars = len(historical_context) if historical_context else 0
+    return context, historical_chars
 
 
 def validate_candidate(
@@ -784,34 +872,45 @@ def main(argv: Optional[list[str]] = None) -> int:
     from alfred.tools.llm import LLMError
 
     demo_plan_context = load_demo_plan_context()
-    if demo_plan_context:
+    if demo_plan_context.text:
         print(
-            f"  Demo plan context: {len(demo_plan_context)} chars from "
-            "demo plan + Phase 0 frozen scenario (authoritative scope)"
+            f"  Authoring context: {demo_plan_context.packet_char_count} chars from "
+            f"{len(demo_plan_context.selected_sections)} selected sections across "
+            f"{len(demo_plan_context.source_doc_paths)} source docs "
+            f"({demo_plan_context.source_char_count} raw chars)"
         )
     else:
         print(
-            "WARNING: demo plan and Phase 0 frozen scenario both missing; "
-            "planner will lack authoritative Phase 1 scope."
+            "WARNING: authoritative scope docs missing; planner will lack the "
+            "ratified Phase 3 scope brief."
         )
 
     planner_out = None
     last_error: Optional[Exception] = None
     for mode in build_context_attempt_order(args.historical_context_mode):
-        historical_context = load_historical_context(source_path, mode=mode)
-        context_parts = [
-            block for block in (demo_plan_context, historical_context) if block
-        ]
-        current_handover_context = "\n\n".join(context_parts) if context_parts else None
+        current_handover_context, historical_chars = build_planner_context(
+            demo_plan_context,
+            source_path,
+            mode=mode,
+        )
         if current_handover_context:
             print(
                 f"  Planner context mode `{mode}` with "
                 f"{len(current_handover_context)} chars total "
-                f"({len(demo_plan_context)} scope + "
-                f"{len(historical_context) if historical_context else 0} historical)"
+                f"({demo_plan_context.packet_char_count} scope + "
+                f"{historical_chars} historical)"
             )
         else:
             print(f"  Planner context mode `{mode}` with no context at all")
+        if (
+            source_path.is_file()
+            and _repo_relative_doc_path(source_path) in set(demo_plan_context.source_doc_paths)
+            and historical_chars == 0
+        ):
+            print(
+                "  Historical continuity source already appears in authoritative "
+                "scope; duplicate continuity context skipped"
+            )
         try:
             planner_out = run_planner(
                 PlannerInput(
