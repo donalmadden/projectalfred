@@ -1,23 +1,21 @@
-"""Generate the canonical handover that plans Phase 4 of the blank-project kickoff demo.
+"""Generate the canonical handover that plans Phase 5 of the blank-project kickoff demo.
 
-Follows the same validated canonical-generation path as the prior Phase 3
+Follows the same validated canonical-generation path as the prior Phase 4
 generator, but the planner is now grounded on the live demo plan, the
 Phase 1 frozen specs (charter, demo-project layout, kickoff handover
-outline), and the Phase 3 canonical handover (`docs/canonical/ALFRED_HANDOVER_10.md`)
-which documents the now-shipped proposal-persistence and review surfaces
-Phase 4 must write through without regeneration — and seeded with the
-previous canonical handover as continuity context only. The target output
-is `docs/canonical/ALFRED_HANDOVER_11.md`, written only after the
-structural and grounding validators pass.
+outline), and the Phase 4 canonical handover (`docs/canonical/ALFRED_HANDOVER_11.md`)
+which documents the now-shipped approval-gated GitHub write path and the
+observable evidence surfaces Phase 5 must rehearse around — and seeded
+with the previous canonical handover as continuity context only. The
+target output is `docs/canonical/ALFRED_HANDOVER_12.md`, written only
+after the structural and grounding validators pass.
 
-Scope of the generated handover: Phase 4 of the demo plan only — close
-the human approval gate into actual GitHub Project V2 writes. Phase 3
-already persists proposal records, attaches them to `TaskResult`, and
-exposes a review-only listing without re-invoking the story generator;
-Phase 4 must record approval against that durable state and then write
-the exact approved proposals into the previously blank board while
-keeping project docs as the source of truth. Phase 5 (rehearsal
-runbook) is explicitly out of scope.
+Scope of the generated handover: Phase 5 of the demo plan only — make
+the slice dependable enough to present by turning the completed kickoff
+flow into a repeatable rehearsal script with known-good inputs, stable
+operator steps, and a fallback plan for model or GitHub hiccups. The
+runtime slice itself already exists; Phase 5 must package and verify it
+without re-opening the earlier implementation phases.
 """
 from __future__ import annotations
 
@@ -55,9 +53,9 @@ _LOCAL_PATH_RE = re.compile(
     r"`(?P<path>(?:docs|src|scripts|tests|configs|evals|\.github)/[A-Za-z0-9_./\-]+)`"
 )
 
-EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_11"
-EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_10"
-DISPLAY_TITLE = "Demo Plan Phase 4 — Close The HITL Gate Into GitHub Board Writes"
+EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_12"
+EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_11"
+DISPLAY_TITLE = "Demo Plan Phase 5 — Rehearsal, Instrumentation, And Demo Script"
 SOURCE_FILENAME = f"{EXPECTED_PREVIOUS_HANDOVER}.md"
 FAILED_FILENAME = f"{EXPECTED_HANDOVER_ID}_FAILED_CANDIDATE.md"
 DEFAULT_CONTEXT_CHARS = 6000
@@ -68,18 +66,20 @@ DEMO_PHASE1_FROZEN_PATHS: tuple[Path, ...] = (
     REPO_ROOT / "docs/active/DEMO_PROJECT_LAYOUT.md",
     REPO_ROOT / "docs/active/KICKOFF_HANDOVER_OUTLINE.md",
 )
-# Phase 3 canonical: documents the durable StoryProposal schema,
-# persistence layer, orchestrator linkage, and review-only listing that
-# Phase 4 must consume for the actual board-write step. Treated as
-# authoritative scope — Phase 4 cannot revisit how proposals are
-# generated or persisted; it must request approval and write the exact
-# reviewed records through the GitHub path.
-DEMO_PHASE3_CANONICAL_PATH: Path = REPO_ROOT / "docs/canonical/ALFRED_HANDOVER_10.md"
+# Phase 4 canonical: documents the completed approval-gated board-write
+# path and the evidence surfaces the operator can already inspect.
+# Treated as authoritative scope — Phase 5 should rehearse and package
+# this flow, not revisit proposal persistence or the write mechanics.
+DEMO_PHASE4_CANONICAL_PATH: Path = REPO_ROOT / "docs/canonical/ALFRED_HANDOVER_11.md"
 AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
     DocumentSelectionSpec(
         source_path=DEMO_PLAN_PATH,
         selectors=(
             SectionSelector("Demo Outcome We Are Building Toward", "narrative arc"),
+            SectionSelector(
+                "What The Demo Must Prove > Operational proof",
+                "operator-visible proof targets",
+            ),
             SectionSelector("Hard Rules", "locked constraints", render_mode="verbatim_only"),
             SectionSelector("Out Of Scope", "locked boundaries"),
             SectionSelector(
@@ -89,12 +89,12 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
             ),
             SectionSelector("Required Functional Capabilities", "runtime obligations"),
             SectionSelector(
-                "Phase Plan > Phase 4 — Close The HITL Gate Into GitHub Board Writes",
+                "Phase Plan > Phase 5 — Rehearsal, Instrumentation, And Demo Script",
                 "active phase scope",
             ),
             SectionSelector(
-                "Phase Plan > Phase 5 — Rehearsal, Instrumentation, And Demo Script",
-                "next-phase boundary",
+                "Suggested Work Breakdown For The Next 24 Hours > Track E — Rehearsal and operator clarity",
+                "rehearsal work breakdown",
             ),
             SectionSelector("Definition Of Demo-Done", "observable completion evidence"),
             SectionSelector("Definition Of Failure", "failure boundaries"),
@@ -134,37 +134,25 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         ),
     ),
     DocumentSelectionSpec(
-        source_path=DEMO_PHASE3_CANONICAL_PATH,
+        source_path=DEMO_PHASE4_CANONICAL_PATH,
         selectors=(
             SectionSelector(
-                "WHAT EXISTS TODAY > Runtime & Repo Inventory (relevant to Phase 3)",
+                "WHAT EXISTS TODAY > Runtime & Repo Inventory (relevant to Phase 4)",
                 "runtime inventory",
             ),
             SectionSelector(
                 "WHAT EXISTS TODAY > Key Design Decisions Inherited (Do Not Revisit)",
                 "inherited design decisions",
             ),
-            SectionSelector("HARD RULES", "phase 3 hard constraints"),
-            SectionSelector("WHAT THIS PHASE PRODUCES", "phase 3 outputs"),
-            SectionSelector("TASK OVERVIEW", "phase 3 task map"),
+            SectionSelector("HARD RULES", "phase 4 hard constraints"),
+            SectionSelector("WHAT THIS PHASE PRODUCES", "phase 4 outputs"),
+            SectionSelector("TASK OVERVIEW", "phase 4 task map"),
             SectionSelector(
-                "TASK 1 — Define persisted `StoryProposal` + approval lifecycle schema > Implementation",
-                "proposal schema + lifecycle contract",
+                "TASK 1 — Define Phase 4 Approval→Write Contract (Linkage + Lifecycle) > Implementation",
+                "approval-write contract anchor",
             ),
-            SectionSelector(
-                "TASK 2 — Implement SQLite persistence for proposed stories > Implementation",
-                "persistence read/write contract",
-            ),
-            SectionSelector(
-                "TASK 3 — Persist structured agent output onto `TaskResult` via orchestrator > Implementation",
-                "structured runtime attachment",
-            ),
-            SectionSelector(
-                "TASK 4 — Gate review reads from persistence (no regeneration) > Implementation",
-                "review surface contract",
-            ),
-            SectionSelector("WHAT NOT TO DO", "phase 3 guardrails"),
-            SectionSelector("POST-MORTEM", "phase 4 carry-forward"),
+            SectionSelector("WHAT NOT TO DO", "phase 4 guardrails"),
+            SectionSelector("POST-MORTEM", "phase 5 carry-forward"),
         ),
     ),
 )
@@ -214,44 +202,39 @@ _DOC_PATH_OVERRIDES = {
 }
 
 SPRINT_GOAL = (
-    "Generate the canonical handover that plans Phase 4 of the blank-project "
+    "Generate the canonical handover that plans Phase 5 of the blank-project "
     "kickoff demo plan. Phase 0 (scenario freeze), Phase 1 (kickoff "
     "handover shape, demo-project layout, charter content, board-seeding "
-    "task spec, approval-gate wording), Phase 2 (execution harness), and "
-    "Phase 3 (durable proposal persistence + no-regeneration review) are "
-    "already frozen and ratified. This handover must execute Phase 4 "
-    "only: close the human approval gate into a real GitHub Project V2 "
-    "write path so the previously blank board is populated only after "
-    "approval is recorded, using the exact persisted `StoryProposal` "
-    "records produced by Phase 3. Those persisted records remain runtime "
-    "execution state for continuity across the gate; they do not replace "
-    "the demo project's docs surface or the handover artifact as Alfred's "
-    "protocol source of truth. Concretely the handover must specify: "
-    "(a) the approval record linkage Alfred will use for the board-write "
-    "step, tying the approval to the source handover/task/action and the "
-    "persisted proposal batch, (b) where the execution flow requests and "
-    "records approval so unapproved runs cannot call `github_api`, (c) "
-    "the write path that takes the reviewed persisted proposals and uses "
-    "the existing GitHub adapter to create 6–8 visible draft items on an "
-    "initially blank board, (d) how proposal lifecycle state transitions "
-    "from pending → approved → written without regenerating or mutating "
-    "the reviewed story content, and (e) what observable evidence proves "
-    "Phase 4 is complete (for example: blank board before approval, no "
-    "writes without approval, and the approved proposal titles matching "
-    "the created draft items after the write). The handover must reuse "
-    "the existing approval model wherever possible, keep the request-"
-    "approval step inside the orchestrated execution flow rather than as a "
-    "side demo, and treat the GitHub board as a downstream projection of "
-    "approved docs/runtime state rather than as Alfred's primary memory. "
-    "Phase 5 (rehearsal runbook, operator script, fallback playbook) is "
-    "explicitly out of scope."
+    "task spec, approval-gate wording), Phase 2 (execution harness), "
+    "Phase 3 (durable proposal persistence + no-regeneration review), and "
+    "Phase 4 (approval-gated GitHub Project V2 writes from persisted "
+    "proposals) are already frozen and ratified. This handover must "
+    "execute Phase 5 only: make the completed slice dependable enough to "
+    "present by producing a repeatable step-by-step demo script, naming "
+    "the known-good charter payload / target workspace layout / blank "
+    "GitHub Project target, and defining a fallback plan for model or "
+    "GitHub hiccups. Concretely the handover must specify: (a) the exact "
+    "operator flow from fresh demo workspace + blank board to approved "
+    "handover + board population, including which commands or UI actions "
+    "are taken and what observable evidence the operator should point to "
+    "at each step, (b) the known-good demo inputs and preconditions that "
+    "must be frozen for rehearsal, (c) the instrumentation/log surfaces "
+    "that support the auditability story without adding new runtime "
+    "product scope, (d) the acceptance standard for rehearsal success "
+    "(two clean runs, stable timing, no architecture caveat improvisation), "
+    "and (e) a narrow fallback plan for foreseeable model/provider/GitHub "
+    "issues that preserves the governed-coordination story rather than "
+    "faking the runtime. The handover must treat the existing Phase 4 "
+    "runtime as the product to rehearse, not as scope to redesign. Do not "
+    "re-open board-write mechanics, proposal persistence, or frozen Phase "
+    "0/1 inputs. Phase 5 is packaging, rehearsal, and operator clarity."
 )
 
 DEMO_PLAN_GROUNDING = (
     "Authoritative scope sources for this handover (structured facts and "
     "selected verbatim sections included below in the planner context):\n"
     "- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` — multi-phase "
-    "build plan; this handover plans Phase 4 only.\n"
+    "build plan; this handover plans Phase 5 only.\n"
     "- `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md` — frozen Phase 1 "
     "charter content the harness feeds into Alfred at runtime.\n"
     "- `docs/active/DEMO_PROJECT_LAYOUT.md` — frozen Phase 1 spec for the "
@@ -261,26 +244,25 @@ DEMO_PLAN_GROUNDING = (
     "the kickoff handover the harness produces, including the "
     "board-seeding task (`TASK-SEED-BOARD-001`, `story_generator`) and the "
     "verbatim approval-gate wording.\n"
-    "- `docs/canonical/ALFRED_HANDOVER_10.md` — Phase 3 canonical handover "
-    "(ratified). Documents the shipped `StoryProposal` schema, SQLite "
-    "persistence, orchestrator linkage onto `TaskResult`, and review-only "
-    "gate listing. Phase 4 must write through that durable state without "
-    "regenerating proposals or revisiting the persistence contract.\n"
+    "- `docs/canonical/ALFRED_HANDOVER_11.md` — Phase 4 canonical handover "
+    "(ratified). Documents the shipped approval-gated board-write path, the "
+    "observable harness evidence, and the post-mortem forward plan that "
+    "Phase 5 should package into a repeatable operator rehearsal.\n"
     "Reference-doc rule for the generated canonical: cite every "
     "authoritative source doc that materially constrains the phase. If the "
     "phase still relies directly on the frozen charter or frozen layout, "
     "name those docs directly in `Reference Documents` instead of collapsing "
-    "them only into `docs/canonical/ALFRED_HANDOVER_10.md`.\n"
-    "Source-of-truth rule for Phase 4: approval and write must consume the "
-    "persisted proposal store from Phase 3, but the GitHub board remains a "
-    "downstream projection of approved docs/runtime state rather than the "
-    "primary protocol artifact or runtime memory.\n"
+    "them only into `docs/canonical/ALFRED_HANDOVER_11.md`.\n"
+    "Source-of-truth rule for Phase 5: rehearsal may point to logs, board "
+    "state, and SQLite-backed evidence, but the demo project's docs surface "
+    "and approved handover artifact remain the primary protocol artifacts; "
+    "the GitHub board stays a downstream projection.\n"
     "Treat the contents of those docs as the source of truth for scope. "
-    "Do not invent deliverables outside Phase 4. Do not revisit Phase 0 "
-    "freeze decisions, Phase 1 frozen specs, Phase 2's harness shape, or "
-    "Phase 3's persistence/review contract. Do not broaden into rehearsal "
-    "runbooks, fallback playbooks, or operator documentation — those are "
-    "Phase 5."
+    "Do not invent deliverables outside Phase 5. Do not revisit Phase 0 "
+    "freeze decisions, Phase 1 frozen specs, Phase 2's harness shape, "
+    "Phase 3's persistence/review contract, or Phase 4's approval-gated "
+    "write mechanics. Do not broaden into new runtime features, extra "
+    "GitHub enrichment, or generalized workflow tooling."
 )
 
 
@@ -603,19 +585,19 @@ def load_demo_plan_context() -> AuthoringContextPacket:
         existing_specs,
         repo_root=REPO_ROOT,
         intro_lines=(
-            "===== AUTHORITATIVE PHASE 4 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
+            "===== AUTHORITATIVE PHASE 5 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
             "Pass 1 indexed the authoritative docs by headings, rules, task specs, inherited constraints, and phase-detail sections.",
-            "Pass 2 selected only the sections needed to author the Phase 4 canonical handover and rendered structured facts plus verbatim source excerpts.",
+            "Pass 2 selected only the sections needed to author the Phase 5 canonical handover and rendered structured facts plus verbatim source excerpts.",
             "The source docs remain authoritative. The extracted packet is a deterministic view over those docs, not a replacement for them.",
             "",
             "===== AUTHORITATIVE SOURCE DOC MAP =====",
-            "- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` — Phase 4 scope, hard rules, done/failure conditions.",
+            "- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` — Phase 5 scope, hard rules, done/failure conditions.",
             "- `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md` — frozen kickoff charter input; still authoritative when describing what the harness reads.",
             "- `docs/active/DEMO_PROJECT_LAYOUT.md` — frozen workspace-shape contract; still authoritative when describing docs surface and external-workspace paths.",
             "- `docs/active/KICKOFF_HANDOVER_OUTLINE.md` — frozen board-seeding task and verbatim approval-gate wording.",
-            "- `docs/canonical/ALFRED_HANDOVER_10.md` — ratified Phase 3 runtime-state behavior, review surface, and explicit Phase 4 boundary.",
+            "- `docs/canonical/ALFRED_HANDOVER_11.md` — ratified Phase 4 board-write behavior, evidence surfaces, and explicit Phase 5 forward plan.",
             "Reference-doc expectation: the generated canonical should cite every authoritative source doc materially relied upon by the phase, including inherited frozen docs such as the charter and layout when their constraints are used directly.",
-            "Source-of-truth expectation: approval and board-write logic must consume the persisted StoryProposal rows from Phase 3 without turning the GitHub board into Alfred's primary source of truth.",
+            "Source-of-truth expectation: rehearsal and operator guidance may expose runtime evidence, but they must not turn the GitHub board or logs into Alfred's primary source of truth.",
         ),
     )
 
@@ -915,7 +897,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     else:
         print(
             "WARNING: authoritative scope docs missing; planner will lack the "
-            "ratified Phase 4 scope brief."
+            "ratified Phase 5 scope brief."
         )
 
     planner_out = None
