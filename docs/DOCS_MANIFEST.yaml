@@ -236,6 +236,14 @@ documents:
     authoritative: false
     notes: Phase 5 operator rehearsal script for the blank-project kickoff demo, including the manual kickoff review boundary and the runtime-enforced board-write gate.
 
+  - current_path: docs/active/PHASE_5_DEMO_SCRIPT_PRODUCT_OWNER.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Plain-English product-owner companion to the Phase 5 demo script, written for a non-technical operator running the rehearsal live.
+
   - current_path: docs/active/KICKOFF_HANDOVER_OUTLINE.md
     kind: active_brief
     lifecycle_status: active
