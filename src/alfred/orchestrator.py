@@ -293,6 +293,7 @@ def _run_board_writer(
     )
     from alfred.tools.github_api import create_story
     from alfred.tools.persistence import record_proposal_write
+    from alfred.tools.story_markdown import render_story_proposal_body
 
     effective_db = db_path or (config.database.path or None)
     if not effective_db:
@@ -341,7 +342,13 @@ def _run_board_writer(
 
     written: list[tuple[str, str, str]] = []
     for record in batch:
-        item_id = create_story(org, project_number, record.title, token)
+        item_id = create_story(
+            org,
+            project_number,
+            record.title,
+            token,
+            body=render_story_proposal_body(record),
+        )
         record_proposal_write(
             effective_db,
             proposed_story_id=record.proposed_story_id,

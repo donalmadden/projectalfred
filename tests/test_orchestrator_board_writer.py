@@ -78,6 +78,14 @@ class _FakeGitHubClient:
             if "addProjectV2DraftIssue" in c.get("query", "")
         ]
 
+    def create_bodies(self) -> list[str]:
+        """Bodies passed to addProjectV2DraftIssue mutations, in order."""
+        return [
+            c["variables"]["body"]
+            for c in self.calls
+            if "addProjectV2DraftIssue" in c.get("query", "")
+        ]
+
 
 @pytest.fixture(autouse=True)
 def _restore_runners_and_client():
@@ -230,6 +238,9 @@ def test_approved_writes_exactly_persisted_proposals(
     )
     assert len(receipts) == 7
     assert {r["github_title"] for r in receipts} == {s.title for s in seeded}
+    assert fake_client.create_bodies()[0] == (
+        "Description 1\n\nAcceptance Criteria\n- AC1\n- AC2\n\nStory Points: 3"
+    )
 
 
 def test_runner_refuses_when_github_config_missing(
