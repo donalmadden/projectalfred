@@ -39,15 +39,23 @@ This document is the operator-facing rehearsal script for Alfred's blank-project
   - `<demo-project-root>/docs/CHARTER.md` [future-doc: path inside the external demo workspace]
   - `<demo-project-root>/docs/handovers/` [future-path: directory inside the external demo workspace]
 - First Alfred-authored artifact path: `<demo-project-root>/docs/handovers/ALFRED_HANDOVER_1.md` [future-doc: first handover path inside the external demo workspace]
-- Target GitHub Project identity: record the exact board URL, owner, and project number before rehearsal. This identifier is human-supplied and must remain fixed across clean runs.
+- Target GitHub Project identity:
+  - owner: `donalmadden`
+  - project number: `5`
+  - title: `Alfred Demo Sample`
+  - state: `open`
+  - node id: `PVT_kwHOAFAEps4BWOy7`
+  - browser URL: `https://github.com/users/donalmadden/projects/5`
 
 ## Preflight Checklist
 
 - [ ] Scenario is still `Customer Onboarding Portal`; no domain substitution has been introduced.
 - [ ] The charter source is `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md`, and the external workspace will receive it verbatim at `<demo-project-root>/docs/CHARTER.md` [future-doc: path inside the external demo workspace].
-- [ ] The target GitHub Project V2 board URL/name is written down for the rehearsal and confirmed to be the intended blank board.
+- [ ] The target GitHub Project V2 board is `Alfred Demo Sample` (#5, state `open`, id `PVT_kwHOAFAEps4BWOy7`) at `https://github.com/users/donalmadden/projects/5`.
 - [ ] The target GitHub Project V2 board currently shows `0` items in the browser.
-- [ ] `DEMO_PROJECT_ROOT`, `ALFRED_DEMO_GITHUB_ORG`, and `ALFRED_DEMO_GITHUB_PROJECT_NUMBER` are exported in Terminal B.
+- [ ] `DEMO_PROJECT_ROOT` is exported in Terminal B.
+- [ ] `ALFRED_DEMO_GITHUB_ORG=donalmadden` is exported in Terminal B.
+- [ ] `ALFRED_DEMO_GITHUB_PROJECT_NUMBER=5` is exported in Terminal B.
 - [ ] `ANTHROPIC_API_KEY` is exported for the checked-in kickoff harness path.
 - [ ] `GITHUB_TOKEN` is exported for the Phase 4 board-write arc.
 - [ ] Alfred's API starts locally with `alfred serve --host 127.0.0.1 --port 8000`.
@@ -321,8 +329,8 @@ This demo shows Alfred using project docs as the governing protocol, not GitHub 
 
 ```bash
 export DEMO_PROJECT_ROOT=/tmp/cop_demo
-export ALFRED_DEMO_GITHUB_ORG="<github-org>"
-export ALFRED_DEMO_GITHUB_PROJECT_NUMBER="<project-number>"
+export ALFRED_DEMO_GITHUB_ORG="donalmadden"
+export ALFRED_DEMO_GITHUB_PROJECT_NUMBER="5"
 ```
 
 Observable evidence: the operator can say exactly which external workspace path and which blank GitHub Project are in scope for this run.
