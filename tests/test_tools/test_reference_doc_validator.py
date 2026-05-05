@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from alfred.tools.docs_policy import read_docs_inventory
 from alfred.tools.reference_doc_validator import (
     extract_reference_doc_metadata,
     validate_reference_doc_cross_links,
@@ -125,6 +126,17 @@ def test_explicit_future_doc_tag_skips_cross_link_inventory_check(tmp_path: Path
         "docs/protocol/architecture.md",
         {"docs/protocol/architecture.md"},
         tmp_path,
+    )
+
+    assert issues == []
+
+
+def test_handover_workflow_discussion_doc_has_no_broken_cross_links() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    issues = validate_reference_doc_cross_links(
+        "docs/active/HANDOVER_WORKFLOW_DISCUSSION.md",
+        set(read_docs_inventory(repo_root)),
+        repo_root,
     )
 
     assert issues == []

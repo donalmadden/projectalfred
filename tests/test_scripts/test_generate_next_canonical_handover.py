@@ -61,12 +61,11 @@ def test_previous_canonical_source_is_citable_under_docs_policy() -> None:
     assert is_citable_doc(f"docs/canonical/{gnch.EXPECTED_PREVIOUS_HANDOVER}.md")
 
 
-def test_sprint_goal_is_scoped_to_demo_phase_5() -> None:
-    assert "Phase 5 only" in gnch.SPRINT_GOAL
-    assert "repeatable step-by-step demo script" in gnch.SPRINT_GOAL
-    assert "fallback plan" in gnch.SPRINT_GOAL
-    assert "two clean runs" in gnch.SPRINT_GOAL
-    assert "Phase 5 is packaging, rehearsal, and operator clarity." in gnch.SPRINT_GOAL
+def test_sprint_goal_is_scoped_to_concern_x_slice_1() -> None:
+    assert "Concern X Slice 1" in gnch.SPRINT_GOAL
+    assert "repo cleanup" in gnch.SPRINT_GOAL
+    assert "Do not start the phase ledger" in gnch.SPRINT_GOAL
+    assert "cleanup only" in gnch.SPRINT_GOAL
 
 
 def test_context_attempt_order_degrades_to_none() -> None:
@@ -133,7 +132,7 @@ def test_validate_required_citable_docs_reports_policy_gaps(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_11.md"
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_12.md"
     source.parent.mkdir(parents=True)
     source.write_text("# x\n", encoding="utf-8")
 
@@ -149,14 +148,14 @@ def test_validate_required_citable_docs_reports_policy_gaps(
     )
 
     assert gnch.validate_required_citable_docs(source) == [
-        "docs/canonical/ALFRED_HANDOVER_11.md"
+        "docs/canonical/ALFRED_HANDOVER_12.md"
     ]
 
 
 def test_load_historical_context_skips_when_source_already_in_authoritative_scope(
     tmp_path: Path,
 ) -> None:
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_11.md"
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_12.md"
     source.parent.mkdir(parents=True)
     source.write_text("# x\n", encoding="utf-8")
     source_key = gnch._repo_relative_doc_path(source)
@@ -175,20 +174,20 @@ def test_build_planner_context_deduplicates_overlap_between_scope_and_history(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_11.md"
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_12.md"
     source.parent.mkdir(parents=True)
     source.write_text(
         "# Alfred's Handover Document #11\n\n"
         "## TASK OVERVIEW\n"
         "| # | Task | Deliverable |\n"
         "|---|---|---|\n"
-        "| 1 | Keep | `docs/canonical/ALFRED_HANDOVER_12.md` |\n",
+        "| 1 | Keep | `docs/canonical/ALFRED_HANDOVER_13.md` |\n",
         encoding="utf-8",
     )
 
     scope = (
         "AUTHORITATIVE\n"
-        "----- BEGIN docs/canonical/ALFRED_HANDOVER_11.md -----\n"
+        "----- BEGIN docs/canonical/ALFRED_HANDOVER_12.md -----\n"
         "body"
     )
 
@@ -207,10 +206,11 @@ def test_load_demo_plan_context_builds_targeted_authoring_packet() -> None:
     assert "Source-of-truth expectation:" in packet.text
     assert "===== PASS 1 — STRUCTURED FACTS =====" in packet.text
     assert "===== PASS 2 — VERBATIM SOURCE SECTIONS =====" in packet.text
-    assert "Track E — Rehearsal and operator clarity" in packet.text
-    assert "Phase 5 demo script/runbook and rehearsal instrumentation." in packet.text
+    assert "Slice 1 — Repo cleanup" in packet.text
+    assert "resolved Concern X design decisions" in packet.text
     assert "### Verification" not in packet.text
-    assert "docs/canonical/ALFRED_HANDOVER_11.md" in packet.source_doc_paths
+    assert "docs/active/HANDOVER_WORKFLOW_DISCUSSION.md" in packet.source_doc_paths
+    assert "docs/active/POST_GRILL_1.md" in packet.source_doc_paths
 
 
 def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:

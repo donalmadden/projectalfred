@@ -1,21 +1,19 @@
-"""Generate the canonical handover that plans Phase 5 of the blank-project kickoff demo.
+"""Generate the canonical handover for Concern X Slice 1 of Alfred's seam-discipline migration.
 
-Follows the same validated canonical-generation path as the prior Phase 4
-generator, but the planner is now grounded on the live demo plan, the
-Phase 1 frozen specs (charter, demo-project layout, kickoff handover
-outline), and the Phase 4 canonical handover (`docs/canonical/ALFRED_HANDOVER_11.md`)
-which documents the now-shipped approval-gated GitHub write path and the
-observable evidence surfaces Phase 5 must rehearse around — and seeded
-with the previous canonical handover as continuity context only. The
-target output is `docs/canonical/ALFRED_HANDOVER_12.md`, written only
-after the structural and grounding validators pass.
+Follows the same validated canonical-generation path as the prior
+Phase 5 generator, but the planner is now grounded on the resolved
+Concern X workflow discussion and the post-grilling implementation plan,
+with the previous canonical handover (`docs/canonical/ALFRED_HANDOVER_12.md`)
+seeded as continuity context only. The target output is
+`docs/canonical/ALFRED_HANDOVER_13.md`, written only after the
+structural and grounding validators pass.
 
-Scope of the generated handover: Phase 5 of the demo plan only — make
-the slice dependable enough to present by turning the completed kickoff
-flow into a repeatable rehearsal script with known-good inputs, stable
-operator steps, and a fallback plan for model or GitHub hiccups. The
-runtime slice itself already exists; Phase 5 must package and verify it
-without re-opening the earlier implementation phases.
+Scope of the generated handover: Concern X Slice 1 only — delete the
+obsolete scripts and stale phase-specific tests already called out in the
+resolved workflow discussion and the post-grill implementation plan.
+This handover must keep the cleanup narrow, prove no live callers are
+broken, and explicitly leave ledger, renderer, validator-chain, and
+context-bundle implementation for later slices.
 """
 from __future__ import annotations
 
@@ -53,106 +51,49 @@ _LOCAL_PATH_RE = re.compile(
     r"`(?P<path>(?:docs|src|scripts|tests|configs|evals|\.github)/[A-Za-z0-9_./\-]+)`"
 )
 
-EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_12"
-EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_11"
-DISPLAY_TITLE = "Demo Plan Phase 5 — Rehearsal, Instrumentation, And Demo Script"
+EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_13"
+EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_12"
+DISPLAY_TITLE = "Concern X Slice 1 — Repo Cleanup For Seam-Discipline Migration"
 SOURCE_FILENAME = f"{EXPECTED_PREVIOUS_HANDOVER}.md"
 FAILED_FILENAME = f"{EXPECTED_HANDOVER_ID}_FAILED_CANDIDATE.md"
 DEFAULT_CONTEXT_CHARS = 6000
 
-DEMO_PLAN_PATH = REPO_ROOT / "docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md"
-DEMO_PHASE1_FROZEN_PATHS: tuple[Path, ...] = (
-    REPO_ROOT / "docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md",
-    REPO_ROOT / "docs/active/DEMO_PROJECT_LAYOUT.md",
-    REPO_ROOT / "docs/active/KICKOFF_HANDOVER_OUTLINE.md",
-)
-# Phase 4 canonical: documents the completed approval-gated board-write
-# path and the evidence surfaces the operator can already inspect.
-# Treated as authoritative scope — Phase 5 should rehearse and package
-# this flow, not revisit proposal persistence or the write mechanics.
-DEMO_PHASE4_CANONICAL_PATH: Path = REPO_ROOT / "docs/canonical/ALFRED_HANDOVER_11.md"
+WORKFLOW_DISCUSSION_PATH = REPO_ROOT / "docs/active/HANDOVER_WORKFLOW_DISCUSSION.md"
+POST_GRILL_PLAN_PATH = REPO_ROOT / "docs/active/POST_GRILL_1.md"
 AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
     DocumentSelectionSpec(
-        source_path=DEMO_PLAN_PATH,
+        source_path=WORKFLOW_DISCUSSION_PATH,
         selectors=(
-            SectionSelector("Demo Outcome We Are Building Toward", "narrative arc"),
             SectionSelector(
-                "What The Demo Must Prove > Operational proof",
-                "operator-visible proof targets",
+                "Methodology change",
+                "core property shift that makes Concern X permanent",
             ),
-            SectionSelector("Hard Rules", "locked constraints", render_mode="verbatim_only"),
-            SectionSelector("Out Of Scope", "locked boundaries"),
             SectionSelector(
-                "Minimal Viable Demo Slice",
-                "critical path",
+                "Resolved (Concern X)",
+                "accepted seam-discipline decisions and explicit migration targets",
+                render_mode="facts_and_verbatim",
+            ),
+            SectionSelector(
+                "Removed",
+                "obsolete scripts and tests explicitly slated for deletion",
+                render_mode="facts_and_verbatim",
+            ),
+        ),
+    ),
+    DocumentSelectionSpec(
+        source_path=POST_GRILL_PLAN_PATH,
+        selectors=(
+            SectionSelector("Overview", "overall slice framing"),
+            SectionSelector(
+                "Slice 1 — Repo cleanup",
+                "active slice scope, files, tests, and acceptance criteria",
+                render_mode="facts_and_verbatim",
+            ),
+            SectionSelector(
+                "Recommended First Slice",
+                "lock that this handover must execute Slice 1 only",
                 render_mode="verbatim_only",
             ),
-            SectionSelector("Required Functional Capabilities", "runtime obligations"),
-            SectionSelector(
-                "Phase Plan > Phase 5 — Rehearsal, Instrumentation, And Demo Script",
-                "active phase scope",
-            ),
-            SectionSelector(
-                "Suggested Work Breakdown For The Next 24 Hours > Track E — Rehearsal and operator clarity",
-                "rehearsal work breakdown",
-            ),
-            SectionSelector("Definition Of Demo-Done", "observable completion evidence"),
-            SectionSelector("Definition Of Failure", "failure boundaries"),
-            SectionSelector("Final Guidance", "demo framing"),
-        ),
-    ),
-    DocumentSelectionSpec(
-        source_path=DEMO_PLAN_PATH.parent / "CUSTOMER_ONBOARDING_PORTAL_CHARTER.md",
-        selectors=(
-            SectionSelector("Business Context", "domain context"),
-            SectionSelector("Primary User", "primary user constraints"),
-            SectionSelector("Success Metric", "success target"),
-            SectionSelector("Known Constraints", "charter constraints"),
-            SectionSelector("Explicit Non-Goals", "charter boundaries"),
-        ),
-    ),
-    DocumentSelectionSpec(
-        source_path=DEMO_PLAN_PATH.parent / "DEMO_PROJECT_LAYOUT.md",
-        selectors=(
-            SectionSelector("Frozen Layout", "workspace shape"),
-            SectionSelector("File And Directory Purposes", "workspace semantics"),
-            SectionSelector("CHARTER.md Source", "charter copy rule", render_mode="verbatim_only"),
-            SectionSelector("Directory Decisions", "layout constraints"),
-        ),
-    ),
-    DocumentSelectionSpec(
-        source_path=DEMO_PLAN_PATH.parent / "KICKOFF_HANDOVER_OUTLINE.md",
-        selectors=(
-            SectionSelector("CONTEXT - READ THIS FIRST", "kickoff framing"),
-            SectionSelector("WHAT EXISTS TODAY", "kickoff starting state"),
-            SectionSelector("KICKOFF GOALS", "kickoff goals"),
-            SectionSelector("PROPOSED BACKLOG - CUSTOMER ONBOARDING PORTAL", "benchmark backlog"),
-            SectionSelector("BOARD-SEEDING TASK", "task contract", render_mode="verbatim_only"),
-            SectionSelector("APPROVAL GATE", "approval wording", render_mode="verbatim_only"),
-            SectionSelector("WHAT NOT TO DO", "kickoff guardrails"),
-            SectionSelector("POST-MORTEM", "required executor close-out"),
-        ),
-    ),
-    DocumentSelectionSpec(
-        source_path=DEMO_PHASE4_CANONICAL_PATH,
-        selectors=(
-            SectionSelector(
-                "WHAT EXISTS TODAY > Runtime & Repo Inventory (relevant to Phase 4)",
-                "runtime inventory",
-            ),
-            SectionSelector(
-                "WHAT EXISTS TODAY > Key Design Decisions Inherited (Do Not Revisit)",
-                "inherited design decisions",
-            ),
-            SectionSelector("HARD RULES", "phase 4 hard constraints"),
-            SectionSelector("WHAT THIS PHASE PRODUCES", "phase 4 outputs"),
-            SectionSelector("TASK OVERVIEW", "phase 4 task map"),
-            SectionSelector(
-                "TASK 1 — Define Phase 4 Approval→Write Contract (Linkage + Lifecycle) > Implementation",
-                "approval-write contract anchor",
-            ),
-            SectionSelector("WHAT NOT TO DO", "phase 4 guardrails"),
-            SectionSelector("POST-MORTEM", "phase 5 carry-forward"),
         ),
     ),
 )
@@ -202,67 +143,52 @@ _DOC_PATH_OVERRIDES = {
 }
 
 SPRINT_GOAL = (
-    "Generate the canonical handover that plans Phase 5 of the blank-project "
-    "kickoff demo plan. Phase 0 (scenario freeze), Phase 1 (kickoff "
-    "handover shape, demo-project layout, charter content, board-seeding "
-    "task spec, approval-gate wording), Phase 2 (execution harness), "
-    "Phase 3 (durable proposal persistence + no-regeneration review), and "
-    "Phase 4 (approval-gated GitHub Project V2 writes from persisted "
-    "proposals) are already frozen and ratified. This handover must "
-    "execute Phase 5 only: make the completed slice dependable enough to "
-    "present by producing a repeatable step-by-step demo script, naming "
-    "the known-good charter payload / target workspace layout / blank "
-    "GitHub Project target, and defining a fallback plan for model or "
-    "GitHub hiccups. Concretely the handover must specify: (a) the exact "
-    "operator flow from fresh demo workspace + blank board to approved "
-    "handover + board population, including which commands or UI actions "
-    "are taken and what observable evidence the operator should point to "
-    "at each step, (b) the known-good demo inputs and preconditions that "
-    "must be frozen for rehearsal, (c) the instrumentation/log surfaces "
-    "that support the auditability story without adding new runtime "
-    "product scope, (d) the acceptance standard for rehearsal success "
-    "(two clean runs, stable timing, no architecture caveat improvisation), "
-    "and (e) a narrow fallback plan for foreseeable model/provider/GitHub "
-    "issues that preserves the governed-coordination story rather than "
-    "faking the runtime. The handover must treat the existing Phase 4 "
-    "runtime as the product to rehearse, not as scope to redesign. Do not "
-    "re-open board-write mechanics, proposal persistence, or frozen Phase "
-    "0/1 inputs. Phase 5 is packaging, rehearsal, and operator clarity."
+    "Generate the canonical handover that plans Concern X Slice 1 of Alfred's "
+    "seam-discipline migration. The blank-project kickoff demo through "
+    "ALFRED_HANDOVER_12 is closed and ratified; this next handover shifts "
+    "back to methodology scaffolding and must execute Slice 1 only: repo "
+    "cleanup. Concretely the handover must specify: (a) the exact obsolete "
+    "scripts and tests to delete, (b) the narrow edits required in "
+    "`tests/test_scripts/test_generate_next_canonical_handover.py` so the "
+    "phase-specific stale prose assertions are removed rather than carried "
+    "forward, (c) the evidence-gathering step that proves nothing in `scripts/`, "
+    "`src/`, `tests/`, `pyproject.toml`, or CI still relies on the deleted "
+    "files, and (d) the validation standard for declaring the cleanup safe "
+    "(targeted grep plus regression coverage). The handover must keep scope "
+    "strictly on Slice 1 as the recommended first slice from the post-grill "
+    "plan. Do not start the phase ledger, context bundle, renderer, "
+    "pre-flight/post-generation validators, or reference-tag parser work in "
+    "this handover. This phase is cleanup only, intended to remove false-signal "
+    "noise before the seam-closure migration begins in earnest."
 )
 
 DEMO_PLAN_GROUNDING = (
     "Authoritative scope sources for this handover (structured facts and "
     "selected verbatim sections included below in the planner context):\n"
-    "- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` — multi-phase "
-    "build plan; this handover plans Phase 5 only.\n"
-    "- `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md` — frozen Phase 1 "
-    "charter content the harness feeds into Alfred at runtime.\n"
-    "- `docs/active/DEMO_PROJECT_LAYOUT.md` — frozen Phase 1 spec for the "
-    "demo project's initial filesystem shape; the harness initialises the "
-    "workspace to this layout exactly (Phase 2 deliverable shipped).\n"
-    "- `docs/active/KICKOFF_HANDOVER_OUTLINE.md` — frozen Phase 1 spec for "
-    "the kickoff handover the harness produces, including the "
-    "board-seeding task (`TASK-SEED-BOARD-001`, `story_generator`) and the "
-    "verbatim approval-gate wording.\n"
-    "- `docs/canonical/ALFRED_HANDOVER_11.md` — Phase 4 canonical handover "
-    "(ratified). Documents the shipped approval-gated board-write path, the "
-    "observable harness evidence, and the post-mortem forward plan that "
-    "Phase 5 should package into a repeatable operator rehearsal.\n"
+    "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X "
+    "design discussion; defines the methodology-level seam-discipline "
+    "constraints and explicitly identifies obsolete scripts/tests slated for "
+    "removal.\n"
+    "- `docs/active/POST_GRILL_1.md` — implementation plan for Concern X; "
+    "this handover plans Slice 1 only.\n"
+    "- `docs/canonical/ALFRED_HANDOVER_12.md` — previous ratified canonical "
+    "handover; baseline continuity for current repo state and the transition "
+    "out of the Phase 5 demo slice.\n"
     "Reference-doc rule for the generated canonical: cite every "
-    "authoritative source doc that materially constrains the phase. If the "
-    "phase still relies directly on the frozen charter or frozen layout, "
-    "name those docs directly in `Reference Documents` instead of collapsing "
-    "them only into `docs/canonical/ALFRED_HANDOVER_11.md`.\n"
-    "Source-of-truth rule for Phase 5: rehearsal may point to logs, board "
-    "state, and SQLite-backed evidence, but the demo project's docs surface "
-    "and approved handover artifact remain the primary protocol artifacts; "
-    "the GitHub board stays a downstream projection.\n"
+    "authoritative source doc that materially constrains the phase. Because "
+    "this handover depends directly on both the resolved workflow discussion "
+    "and the post-grill implementation plan, name those docs explicitly in "
+    "`Reference Documents` rather than collapsing them into continuity prose.\n"
+    "Source-of-truth rule for Concern X Slice 1: the canonical handover "
+    "history and the accepted active briefs define scope; generator scripts, "
+    "tests, and archived drafts are implementation surfaces, not source-of-truth "
+    "planning artifacts.\n"
     "Treat the contents of those docs as the source of truth for scope. "
-    "Do not invent deliverables outside Phase 5. Do not revisit Phase 0 "
-    "freeze decisions, Phase 1 frozen specs, Phase 2's harness shape, "
-    "Phase 3's persistence/review contract, or Phase 4's approval-gated "
-    "write mechanics. Do not broaden into new runtime features, extra "
-    "GitHub enrichment, or generalized workflow tooling."
+    "Do not invent deliverables outside Slice 1. Do not start any later "
+    "Concern X slice (phase ledger, reference-tag parser, section contract, "
+    "context bundle, renderer, pre-flight validators, post-generation "
+    "validators, or failed-candidate short-circuit) in this handover. Do "
+    "not reopen Phase 5 demo polish or add new runtime product scope."
 )
 
 
@@ -585,19 +511,16 @@ def load_demo_plan_context() -> AuthoringContextPacket:
         existing_specs,
         repo_root=REPO_ROOT,
         intro_lines=(
-            "===== AUTHORITATIVE PHASE 5 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
-            "Pass 1 indexed the authoritative docs by headings, rules, task specs, inherited constraints, and phase-detail sections.",
-            "Pass 2 selected only the sections needed to author the Phase 5 canonical handover and rendered structured facts plus verbatim source excerpts.",
+            "===== AUTHORITATIVE CONCERN X SLICE 1 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
+            "Pass 1 indexed the authoritative docs by resolved methodology constraints, explicit cleanup targets, and slice-level acceptance criteria.",
+            "Pass 2 selected only the sections needed to author the Handover 13 canonical cleanup brief and rendered structured facts plus verbatim source excerpts.",
             "The source docs remain authoritative. The extracted packet is a deterministic view over those docs, not a replacement for them.",
             "",
             "===== AUTHORITATIVE SOURCE DOC MAP =====",
-            "- `docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md` — Phase 5 scope, hard rules, done/failure conditions.",
-            "- `docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md` — frozen kickoff charter input; still authoritative when describing what the harness reads.",
-            "- `docs/active/DEMO_PROJECT_LAYOUT.md` — frozen workspace-shape contract; still authoritative when describing docs surface and external-workspace paths.",
-            "- `docs/active/KICKOFF_HANDOVER_OUTLINE.md` — frozen board-seeding task and verbatim approval-gate wording.",
-            "- `docs/canonical/ALFRED_HANDOVER_11.md` — ratified Phase 4 board-write behavior, evidence surfaces, and explicit Phase 5 forward plan.",
-            "Reference-doc expectation: the generated canonical should cite every authoritative source doc materially relied upon by the phase, including inherited frozen docs such as the charter and layout when their constraints are used directly.",
-            "Source-of-truth expectation: rehearsal and operator guidance may expose runtime evidence, but they must not turn the GitHub board or logs into Alfred's primary source of truth.",
+            "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X design decisions and explicit removal targets.",
+            "- `docs/active/POST_GRILL_1.md` — post-grill implementation plan with Slice 1 as the recommended first slice.",
+            "Reference-doc expectation: the generated canonical should cite both of those active briefs directly because they materially constrain this cleanup phase.",
+            "Source-of-truth expectation: this phase cleans up planning scaffolding; it must not treat generator scripts or archived drafts as authoritative scope documents.",
         ),
     )
 

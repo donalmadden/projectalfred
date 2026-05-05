@@ -139,6 +139,14 @@ documents:
     authoritative: true
     notes: Canonical handover for Phase 5 of the blank-project kickoff demo — rehearsal, operator runbook, and demo-grade instrumentation.
 
+  - current_path: docs/canonical/ALFRED_HANDOVER_13.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover for Concern X Slice 1 — repo cleanup ahead of the seam-discipline migration.
+
   - current_path: docs/protocol/architecture.md
     kind: protocol_doc
     lifecycle_status: protocol
@@ -282,7 +290,15 @@ documents:
     indexed: true
     citable: true
     authoritative: false
-    notes: Open discussion — structured, repeatable workflow for advancing the canonical-handover generator without frontier-model surgery. Park until demo plan Phase 5 closes, then revisit.
+    notes: Resolved design discussion for Concern X seam discipline and Concern Y deferrals in the canonical-handover workflow.
+
+  - current_path: docs/active/POST_GRILL_1.md
+    kind: active_brief
+    lifecycle_status: active
+    indexed: true
+    citable: true
+    authoritative: false
+    notes: Post-grilling implementation plan for Concern X, including the recommended first slice for the next handover.
 
   - current_path: docs/active/FACTUAL_VALIDATOR_FUTURE_TASK_PLANNING_REALISM.md
     kind: active_brief

@@ -117,7 +117,7 @@ The validator failure around `ALFRED_HANDOVER_8.md` showed that the workflow sti
 - a repo doc reference that should resolve in this repository today
 - a path that belongs to a future or external demo workspace and is being named intentionally
 
-Paths like `docs/CHARTER.md`, `docs/CURRENT_STATE.md`, or `docs/handovers/ALFRED_HANDOVER_1.md` were legitimate in the blank-project demo narrative, but they were not part of this repo's docs inventory. Without an explicit signal, the validator treated them as broken current-state references and blocked canonical promotion.
+Paths like `docs/CHARTER.md` [future-doc: path inside the external demo workspace], `docs/CURRENT_STATE.md` [future-doc: optional demo-workspace file; currently deferred], or `docs/handovers/ALFRED_HANDOVER_1.md` [future-doc: first handover path inside the demo workspace] were legitimate in the blank-project demo narrative, but they were not part of this repo's docs inventory. Without an explicit signal, the validator treated them as broken current-state references and blocked canonical promotion.
 
 The immediate fix was the `[future-doc: ...]` / `[future-path: ...]` tagging convention plus validator support for those tags. The larger workflow lesson is that Alfred needs a **reference semantics layer**, not just regexes over backticked paths.
 
