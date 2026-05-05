@@ -8,6 +8,7 @@ from alfred.refs.tags import (
     ReferenceTagParseError,
     extract_reference_tags,
     iter_reference_tags,
+    scan_reference_tags,
 )
 
 
@@ -164,6 +165,63 @@ def test_case_sensitive_prefix_is_not_treated_as_candidate() -> None:
 # ---------------------------------------------------------------------------
 # ReferenceTag dataclass
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Code-span / fenced-block skipping
+# ---------------------------------------------------------------------------
+
+
+def test_inline_code_span_is_not_a_candidate() -> None:
+    # Documenting the syntax inside backticks must not be treated as a tag.
+    text = "We use `[future-doc:]` and `[future-path:]` as labels in prose."
+    tags, errors = scan_reference_tags(text)
+    assert tags == []
+    assert errors == []
+
+
+def test_fenced_code_block_contents_are_skipped() -> None:
+    text = (
+        "Real tag: [future-doc: real path].\n"
+        "```\n"
+        "[future-doc bad inside fence]\n"
+        "[future-path:]\n"
+        "```\n"
+        "Another real: [future-path: real dir].\n"
+    )
+    tags, errors = scan_reference_tags(text)
+    assert [(t.kind, t.path) for t in tags] == [
+        ("future-doc", "real path"),
+        ("future-path", "real dir"),
+    ]
+    assert errors == []
+
+
+def test_inline_code_span_does_not_mask_subsequent_real_tag() -> None:
+    text = "Label `[future-doc:]` then real [future-doc: real path]."
+    [tag] = extract_reference_tags(text)
+    assert tag.path == "real path"
+
+
+def test_scan_collects_tags_and_errors_without_raising() -> None:
+    text = (
+        "good [future-doc: a]\n"
+        "bad  [future-doc no colon]\n"
+        "good again [future-path: b]\n"
+        "empty [future-path:   ]\n"
+    )
+    tags, errors = scan_reference_tags(text)
+    assert [(t.kind, t.path) for t in tags] == [
+        ("future-doc", "a"),
+        ("future-path", "b"),
+    ]
+    assert [e.line for e in errors] == [2, 4]
+    assert "malformed" in errors[0].message
+    assert "empty path" in errors[1].message
+
+
+def test_scan_returns_empty_when_no_tags_or_errors() -> None:
+    assert scan_reference_tags("plain prose") == ([], [])
 
 
 def test_reference_tag_is_frozen() -> None:

@@ -42,6 +42,15 @@ _CANONICAL_RE = re.compile(
 # the prefix.
 _CANDIDATE_RE = re.compile(r"\[(?:future-doc|future-path)")
 
+# Markdown code spans whose content must be treated as verbatim, not as
+# reference-tag candidates. This keeps the parser usable on docs that
+# *describe* the tag grammar (e.g. `[future-doc:]` quoted as a label).
+# Two narrow forms only: triple-backtick fenced blocks and inline
+# single-backtick spans. This is targeted markdown awareness, not
+# generalised markdown parsing.
+_FENCED_BLOCK_RE = re.compile(r"```[^\n]*\n.*?\n```", re.DOTALL)
+_INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
+
 
 @dataclass(frozen=True)
 class ReferenceTag:
@@ -93,6 +102,83 @@ def _snippet(text: str, start: int, max_len: int = 60) -> str:
     return text[start:end]
 
 
+def _code_span_ranges(text: str) -> list[tuple[int, int]]:
+    """Return sorted ``(start, end)`` ranges that must be treated as verbatim."""
+    ranges: list[tuple[int, int]] = []
+    for m in _FENCED_BLOCK_RE.finditer(text):
+        ranges.append((m.start(), m.end()))
+    for m in _INLINE_CODE_RE.finditer(text):
+        # Skip inline matches that fall inside a fenced block.
+        if any(s <= m.start() and m.end() <= e for s, e in ranges):
+            continue
+        ranges.append((m.start(), m.end()))
+    ranges.sort()
+    return ranges
+
+
+def _in_any_range(pos: int, ranges: list[tuple[int, int]]) -> tuple[bool, int]:
+    """Return ``(inside, range_end)``. ``range_end`` is meaningful when inside."""
+    for start, end in ranges:
+        if start <= pos < end:
+            return True, end
+        if start > pos:
+            break
+    return False, 0
+
+
+def _walk(text: str) -> Iterator[ReferenceTag | ReferenceTagParseError]:
+    """Yield ``ReferenceTag`` for canonical hits and ``ReferenceTagParseError``
+    for malformed candidates, in document order. Never raises.
+    """
+    skip_ranges = _code_span_ranges(text)
+    pos = 0
+    n = len(text)
+    while pos < n:
+        cand = _CANDIDATE_RE.search(text, pos)
+        if cand is None:
+            return
+        cand_start = cand.start()
+        inside, range_end = _in_any_range(cand_start, skip_ranges)
+        if inside:
+            pos = range_end
+            continue
+        m = _CANONICAL_RE.match(text, cand_start)
+        if m is None:
+            line, col = _line_col(text, cand_start)
+            yield ReferenceTagParseError(
+                "malformed reference tag (expected `[future-doc: <path>]`"
+                " or `[future-path: <path>]`)",
+                line=line,
+                col=col,
+                snippet=_snippet(text, cand_start),
+            )
+            # Advance past the `[` so we keep scanning beyond the bad tag.
+            pos = cand_start + 1
+            continue
+        path = m.group("path")
+        if not path:
+            line, col = _line_col(text, cand_start)
+            yield ReferenceTagParseError(
+                "reference tag has empty path",
+                line=line,
+                col=col,
+                snippet=_snippet(text, cand_start),
+            )
+            pos = m.end()
+            continue
+        line, col = _line_col(text, cand_start)
+        kind: ReferenceTagKind = m.group("kind")  # type: ignore[assignment]
+        yield ReferenceTag(
+            kind=kind,
+            path=path,
+            start=cand_start,
+            end=m.end(),
+            line=line,
+            col=col,
+        )
+        pos = m.end()
+
+
 def extract_reference_tags(text: str) -> list[ReferenceTag]:
     """Return every canonical reference tag in ``text``.
 
@@ -107,42 +193,27 @@ def iter_reference_tags(text: str) -> Iterator[ReferenceTag]:
     """Yield canonical reference tags in document order.
 
     Raises :class:`ReferenceTagParseError` on the first malformed
-    candidate. Iteration up to that point still completes.
+    candidate. Tags yielded before the failing candidate remain valid.
     """
-    pos = 0
-    n = len(text)
-    while pos < n:
-        cand = _CANDIDATE_RE.search(text, pos)
-        if cand is None:
-            return
-        cand_start = cand.start()
-        m = _CANONICAL_RE.match(text, cand_start)
-        if m is None:
-            line, col = _line_col(text, cand_start)
-            raise ReferenceTagParseError(
-                "malformed reference tag (expected `[future-doc: <path>]`"
-                " or `[future-path: <path>]`)",
-                line=line,
-                col=col,
-                snippet=_snippet(text, cand_start),
-            )
-        path = m.group("path")
-        if not path:
-            line, col = _line_col(text, cand_start)
-            raise ReferenceTagParseError(
-                "reference tag has empty path",
-                line=line,
-                col=col,
-                snippet=_snippet(text, cand_start),
-            )
-        line, col = _line_col(text, cand_start)
-        kind: ReferenceTagKind = m.group("kind")  # type: ignore[assignment]
-        yield ReferenceTag(
-            kind=kind,
-            path=path,
-            start=cand_start,
-            end=m.end(),
-            line=line,
-            col=col,
-        )
-        pos = m.end()
+    for item in _walk(text):
+        if isinstance(item, ReferenceTagParseError):
+            raise item
+        yield item
+
+
+def scan_reference_tags(
+    text: str,
+) -> tuple[list[ReferenceTag], list[ReferenceTagParseError]]:
+    """Return ``(tags, errors)`` collected from a single non-raising scan.
+
+    Useful for validators that want to surface every malformed tag in a
+    document instead of failing on the first one.
+    """
+    tags: list[ReferenceTag] = []
+    errors: list[ReferenceTagParseError] = []
+    for item in _walk(text):
+        if isinstance(item, ReferenceTagParseError):
+            errors.append(item)
+        else:
+            tags.append(item)
+    return tags, errors

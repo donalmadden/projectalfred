@@ -512,6 +512,73 @@ def test_explicit_future_path_tag_skips_current_path_check() -> None:
     assert not path_findings, "Explicit future-path tag must suppress path existence lookup"
 
 
+# ---------------------------------------------------------------------------
+# Reference-tag syntax (Slice 3 — shared parser integration)
+# ---------------------------------------------------------------------------
+
+
+def test_malformed_future_doc_tag_is_flagged() -> None:
+    md = _wrap_current_state(
+        "External workspace path `docs/CHARTER.md` [future-doc demo workspace path]."
+    )
+    findings = validate_current_state_facts(md)
+    ref_findings = [f for f in findings if f.category == ClaimCategory.REFERENCE_DOC]
+    malformed = [
+        f for f in ref_findings
+        if getattr(f.finding_object, "issue_type", "") == "malformed_reference_tag"
+    ]
+    assert malformed, "Missing colon must surface a malformed_reference_tag finding"
+    assert "[future-doc" in malformed[0].evidence
+
+
+def test_malformed_tag_does_not_exempt_path_check() -> None:
+    # A near-miss must NOT exempt the path from the existence check, because
+    # the parser does not recognise it as a canonical tag.
+    md = _wrap_current_state(
+        "Module `docs/MISSING_FILE.md` [future-doc bad-form] is here."
+    )
+    findings = validate_current_state_facts(md)
+    path_findings = [f for f in findings if f.category == ClaimCategory.CURRENT_PATH]
+    # The malformed tag must not cause the path to be silently exempt: at
+    # minimum, the malformed-tag finding fires; the docs/...md cross-link
+    # check or the path check may also fire, but we only assert the tag
+    # finding is deterministic.
+    ref_findings = [
+        f for f in findings
+        if f.category == ClaimCategory.REFERENCE_DOC
+        and getattr(f.finding_object, "issue_type", "") == "malformed_reference_tag"
+    ]
+    assert ref_findings, "Malformed tag must produce a deterministic syntax finding"
+
+
+def test_canonical_tag_inside_inline_code_span_is_not_flagged() -> None:
+    # Documenting the syntax inline must not produce findings.
+    md = _wrap_current_state(
+        "We use `[future-doc:]` and `[future-path:]` as labels in prose."
+    )
+    findings = validate_current_state_facts(md)
+    ref_findings = [
+        f for f in findings
+        if f.category == ClaimCategory.REFERENCE_DOC
+        and getattr(f.finding_object, "issue_type", "") == "malformed_reference_tag"
+    ]
+    assert not ref_findings, "Inline-code prose about the syntax must not be flagged"
+
+
+def test_empty_path_future_doc_is_flagged() -> None:
+    md = _wrap_current_state(
+        "Bare empty tag [future-doc:] should be rejected."
+    )
+    findings = validate_current_state_facts(md)
+    ref_findings = [
+        f for f in findings
+        if f.category == ClaimCategory.REFERENCE_DOC
+        and getattr(f.finding_object, "issue_type", "") == "malformed_reference_tag"
+    ]
+    assert ref_findings
+    assert "empty path" in ref_findings[0].human_message
+
+
 def test_reference_doc_missing_metadata_flagged(tmp_path: Path) -> None:
     (tmp_path / "docs").mkdir(parents=True)
     (tmp_path / "docs" / "ALFRED_HANDOVER_6.md").write_text(

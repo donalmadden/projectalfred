@@ -8,6 +8,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from alfred.refs.tags import ReferenceTag, scan_reference_tags
 from alfred.tools.docs_policy import is_citable_doc, load_docs_policy_entries, resolve_policy_entry
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -20,10 +21,14 @@ _AUTHOR_RE = re.compile(r"\*\*author:\*\*\s*(?P<value>.+)")
 _H2_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
 _HANDOVER_NAME_RE = re.compile(r"ALFRED_HANDOVER_(\d+)(?:_[A-Z0-9_]+)?\.md$")
 _STALE_REFERENCE_DAYS = 90
-_EXPLICIT_FUTURE_PATH_TAG_RE = re.compile(
-    r"\[\s*future-(?:doc|path)(?:\s*:[^\]]+)?\]",
-    re.IGNORECASE,
-)
+
+# Window for treating an inline reference tag as "attached" to a path
+# match. Tags typically appear immediately after the path (160 char
+# look-ahead is generous enough for verbose intent strings); a smaller
+# look-behind handles the rarer `[future-doc: ...]` `path` form.
+_FUTURE_TAG_LOOKBEHIND = 32
+_FUTURE_TAG_LOOKAHEAD = 160
+
 _DEFERRED_DOC_MARKERS = (
     "optional",
     "deferred",
@@ -103,18 +108,25 @@ def _link_is_deferred_or_optional(text: str, match_start: int) -> bool:
     return any(marker in sentence for marker in _DEFERRED_DOC_MARKERS)
 
 
+def _tag_is_attached(tag: ReferenceTag, match_start: int, match_end: int) -> bool:
+    window_start = max(0, match_start - _FUTURE_TAG_LOOKBEHIND)
+    window_end = match_end + _FUTURE_TAG_LOOKAHEAD
+    return tag.start < window_end and tag.end > window_start
+
+
 def path_has_future_tag(
     text: str,
     match_start: int,
     match_end: int,
 ) -> bool:
-    """Return whether an inline future-path/doc tag is attached to the path."""
-    before = text[max(0, match_start - 32):match_start]
-    after = text[match_end:min(len(text), match_end + 160)]
-    return bool(
-        _EXPLICIT_FUTURE_PATH_TAG_RE.search(before)
-        or _EXPLICIT_FUTURE_PATH_TAG_RE.search(after)
-    )
+    """Return whether a canonical reference tag is attached to the path.
+
+    Uses the deterministic parser in :mod:`alfred.refs.tags`; only
+    canonical ``[future-doc: <path>]`` / ``[future-path: <path>]`` tags
+    count. Malformed near-misses do **not** exempt the path.
+    """
+    tags, _errors = scan_reference_tags(text)
+    return any(_tag_is_attached(tag, match_start, match_end) for tag in tags)
 
 
 def link_is_inventory_exempt(text: str, match_start: int, match_end: int) -> bool:

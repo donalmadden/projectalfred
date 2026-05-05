@@ -49,6 +49,7 @@ from alfred.schemas.validator_findings import (  # noqa: E402
     ToolingFinding,
     TopologyFinding,
 )
+from alfred.refs.tags import scan_reference_tags  # noqa: E402
 from alfred.tools.docs_policy import read_docs_inventory  # noqa: E402
 from alfred.tools.reference_doc_validator import (  # noqa: E402
     link_is_inventory_exempt,
@@ -459,6 +460,33 @@ def _check_path_existence(text: str, repo_root: Path) -> list[Finding]:
 
 
 _DOCS_MD_RE = re.compile(r"`(?P<path>docs/[A-Za-z0-9_./\-]+\.md)`")
+
+
+def _check_reference_tag_syntax(text: str) -> list[Finding]:
+    """Surface malformed `[future-doc:...]` / `[future-path:...]` tags."""
+    _, errors = scan_reference_tags(text)
+    findings: list[Finding] = []
+    for err in errors:
+        findings.append(
+            Finding(
+                category=ClaimCategory.REFERENCE_DOC,
+                severity="error",
+                human_message=(
+                    f"malformed reference tag at line {err.line}, col {err.col}: "
+                    f"{err.message}. Use `[future-doc: <path>]` or "
+                    f"`[future-path: <path>]` exactly."
+                ),
+                evidence=err.snippet,
+                section="current_state",
+                finding_object=ReferenceDocFinding(
+                    doc_path="<inline>",
+                    issue_type="malformed_reference_tag",
+                    expected_state="canonical [future-doc: <path>] or [future-path: <path>]",
+                    actual_state=err.snippet,
+                ),
+            )
+        )
+    return findings
 
 
 def _check_reference_documents(
@@ -980,6 +1008,7 @@ def validate_current_state_facts(
 
     findings: list[Finding] = []
     findings.extend(_check_metadata(ctx, source_path, expected_id, expected_previous, expected_date))
+    findings.extend(_check_reference_tag_syntax(current))
     findings.extend(_check_path_existence(current, root))
     findings.extend(_check_reference_documents(current, root, reference_date=ctx_date))
     findings.extend(_check_api_topology(current, root))
