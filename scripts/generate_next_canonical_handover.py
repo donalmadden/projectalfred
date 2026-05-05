@@ -1,19 +1,18 @@
-"""Generate the canonical handover for Concern X Slice 1 of Alfred's seam-discipline migration.
+"""Generate the canonical handover for Concern X Slice 2 of Alfred's seam-discipline migration.
 
 Follows the same validated canonical-generation path as the prior
-Phase 5 generator, but the planner is now grounded on the resolved
-Concern X workflow discussion and the post-grilling implementation plan,
-with the previous canonical handover (`docs/canonical/ALFRED_HANDOVER_12.md`)
-seeded as continuity context only. The target output is
-`docs/canonical/ALFRED_HANDOVER_13.md`, written only after the
-structural and grounding validators pass.
+Slice 1 generator, but the planner is now grounded on the resolved
+Concern X workflow discussion, the post-grilling implementation plan,
+and the newly-ratified Slice 1 canonical handover (`docs/canonical/ALFRED_HANDOVER_13.md`).
+The target output is `docs/canonical/ALFRED_HANDOVER_14.md`, written
+only after the structural and grounding validators pass.
 
-Scope of the generated handover: Concern X Slice 1 only — delete the
-obsolete scripts and stale phase-specific tests already called out in the
-resolved workflow discussion and the post-grill implementation plan.
-This handover must keep the cleanup narrow, prove no live callers are
-broken, and explicitly leave ledger, renderer, validator-chain, and
-context-bundle implementation for later slices.
+Scope of the generated handover: Concern X Slice 2 only — introduce the
+phase ledger as typed YAML plus a validated loader and seed file, while
+leaving generator behavior unchanged. This handover must keep the work
+additive, preserve the current generation path, and explicitly defer
+renderer replacement, context roles, section contracts, and validator-chain
+changes to later slices.
 """
 from __future__ import annotations
 
@@ -51,9 +50,9 @@ _LOCAL_PATH_RE = re.compile(
     r"`(?P<path>(?:docs|src|scripts|tests|configs|evals|\.github)/[A-Za-z0-9_./\-]+)`"
 )
 
-EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_13"
-EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_12"
-DISPLAY_TITLE = "Concern X Slice 1 — Repo Cleanup For Seam-Discipline Migration"
+EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_14"
+EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_13"
+DISPLAY_TITLE = "Concern X Slice 2 — Phase Ledger Schema And Seed File"
 SOURCE_FILENAME = f"{EXPECTED_PREVIOUS_HANDOVER}.md"
 FAILED_FILENAME = f"{EXPECTED_HANDOVER_ID}_FAILED_CANDIDATE.md"
 DEFAULT_CONTEXT_CHARS = 6000
@@ -65,17 +64,18 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         source_path=WORKFLOW_DISCUSSION_PATH,
         selectors=(
             SectionSelector(
-                "Methodology change",
-                "core property shift that makes Concern X permanent",
+                "Resolved (Concern X)",
+                "accepted seam-discipline decisions that Slice 2 must honor",
+                render_mode="facts_only",
             ),
             SectionSelector(
-                "Resolved (Concern X)",
-                "accepted seam-discipline decisions and explicit migration targets",
+                "Proposal Sketch — Now Resolved > A. Phase manifest as the source of truth",
+                "phase ledger rationale and authority-flow rules",
                 render_mode="facts_and_verbatim",
             ),
             SectionSelector(
-                "Removed",
-                "obsolete scripts and tests explicitly slated for deletion",
+                "Proposal Sketch — Now Resolved > B. Sprint goal as a structured object, not a paragraph",
+                "brief field set and human-authored constraints that the ledger schema must model",
                 render_mode="facts_and_verbatim",
             ),
         ),
@@ -85,14 +85,23 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         selectors=(
             SectionSelector("Overview", "overall slice framing"),
             SectionSelector(
-                "Slice 1 — Repo cleanup",
+                "Slice 2 — Phase ledger schema and seed file",
                 "active slice scope, files, tests, and acceptance criteria",
                 render_mode="facts_and_verbatim",
             ),
+        ),
+    ),
+    DocumentSelectionSpec(
+        source_path=REPO_ROOT / "docs/canonical/ALFRED_HANDOVER_13.md",
+        selectors=(
             SectionSelector(
-                "Recommended First Slice",
-                "lock that this handover must execute Slice 1 only",
-                render_mode="verbatim_only",
+                "WHAT EXISTS TODAY > Key Design Decisions Inherited (Do Not Revisit)",
+                "slice 1 decisions that remain locked during slice 2",
+            ),
+            SectionSelector(
+                "POST-MORTEM",
+                "ratified close-out and explicit forward plan to Slice 2",
+                render_mode="facts_and_verbatim",
             ),
         ),
     ),
@@ -143,52 +152,51 @@ _DOC_PATH_OVERRIDES = {
 }
 
 SPRINT_GOAL = (
-    "Generate the canonical handover that plans Concern X Slice 1 of Alfred's "
-    "seam-discipline migration. The blank-project kickoff demo through "
-    "ALFRED_HANDOVER_12 is closed and ratified; this next handover shifts "
-    "back to methodology scaffolding and must execute Slice 1 only: repo "
-    "cleanup. Concretely the handover must specify: (a) the exact obsolete "
-    "scripts and tests to delete, (b) the narrow edits required in "
-    "`tests/test_scripts/test_generate_next_canonical_handover.py` so the "
-    "phase-specific stale prose assertions are removed rather than carried "
-    "forward, (c) the evidence-gathering step that proves nothing in `scripts/`, "
-    "`src/`, `tests/`, `pyproject.toml`, or CI still relies on the deleted "
-    "files, and (d) the validation standard for declaring the cleanup safe "
-    "(targeted grep plus regression coverage). The handover must keep scope "
-    "strictly on Slice 1 as the recommended first slice from the post-grill "
-    "plan. Do not start the phase ledger, context bundle, renderer, "
-    "pre-flight/post-generation validators, or reference-tag parser work in "
-    "this handover. This phase is cleanup only, intended to remove false-signal "
-    "noise before the seam-closure migration begins in earnest."
+    "Generate the canonical handover that plans Concern X Slice 2 of Alfred's "
+    "seam-discipline migration. Slice 1 is complete and ratified in "
+    "ALFRED_HANDOVER_13; this next handover must execute Slice 2 only: add "
+    "the phase ledger schema and seed file. Concretely the handover must "
+    "specify: (a) the typed Pydantic models for `Phase`, `PhaseLedger`, and "
+    "`Brief`, including validation rules such as rejecting malformed ledgers, "
+    "ratified rows without handover ids, and briefs attached to ratified rows; "
+    "(b) the loader surface in `src/alfred/ledger/loader.py` that loads a YAML "
+    "ledger and returns validated models with precise errors; (c) the seed "
+    "artifact `docs/active/PHASE_LEDGER.yaml` populated with phases 0–5 as a "
+    "derived mechanical view of the canonical handovers; and (d) the test plan "
+    "covering model validation plus successful loading of the seed file. The "
+    "handover must make explicit that Slice 2 is additive only and does not "
+    "change `scripts/generate_next_canonical_handover.py` behavior yet. Do not "
+    "start Slice 3+ work such as reference-tag parser changes, doc-section "
+    "contracts, context bundles, renderer replacement, or pre-flight/post-generation "
+    "validators. This phase is ledger scaffolding only."
 )
 
 DEMO_PLAN_GROUNDING = (
     "Authoritative scope sources for this handover (structured facts and "
     "selected verbatim sections included below in the planner context):\n"
     "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X "
-    "design discussion; defines the methodology-level seam-discipline "
-    "constraints and explicitly identifies obsolete scripts/tests slated for "
-    "removal.\n"
+    "design discussion; defines the phase-ledger concept, authority-flow rule, "
+    "and brief semantics that Slice 2 must encode.\n"
     "- `docs/active/POST_GRILL_1.md` — implementation plan for Concern X; "
-    "this handover plans Slice 1 only.\n"
-    "- `docs/canonical/ALFRED_HANDOVER_12.md` — previous ratified canonical "
-    "handover; baseline continuity for current repo state and the transition "
-    "out of the Phase 5 demo slice.\n"
+    "this handover plans Slice 2 only.\n"
+    "- `docs/canonical/ALFRED_HANDOVER_13.md` — previous ratified canonical "
+    "handover; confirms Slice 1 completion and explicitly names Slice 2 as the "
+    "next unit of work.\n"
     "Reference-doc rule for the generated canonical: cite every "
     "authoritative source doc that materially constrains the phase. Because "
-    "this handover depends directly on both the resolved workflow discussion "
-    "and the post-grill implementation plan, name those docs explicitly in "
-    "`Reference Documents` rather than collapsing them into continuity prose.\n"
-    "Source-of-truth rule for Concern X Slice 1: the canonical handover "
-    "history and the accepted active briefs define scope; generator scripts, "
-    "tests, and archived drafts are implementation surfaces, not source-of-truth "
-    "planning artifacts.\n"
+    "this handover depends directly on the workflow discussion, the post-grill "
+    "plan, and the Slice 1 close-out, cite those docs explicitly in "
+    "`Reference Documents`.\n"
+    "Source-of-truth rule for Concern X Slice 2: the canonical handover "
+    "history and accepted active briefs define scope; the phase ledger itself "
+    "is a derived view of canonical handovers, not a protocol artifact and not "
+    "an independent authority source.\n"
     "Treat the contents of those docs as the source of truth for scope. "
-    "Do not invent deliverables outside Slice 1. Do not start any later "
-    "Concern X slice (phase ledger, reference-tag parser, section contract, "
-    "context bundle, renderer, pre-flight validators, post-generation "
-    "validators, or failed-candidate short-circuit) in this handover. Do "
-    "not reopen Phase 5 demo polish or add new runtime product scope."
+    "Do not invent deliverables outside Slice 2. Do not start any later "
+    "Concern X slice (reference-tag parser, section contract, context bundle, "
+    "renderer, pre-flight validators, post-generation validators, or failed-candidate "
+    "short-circuit) in this handover. Do not reopen Phase 5 demo polish or add "
+    "new runtime product scope."
 )
 
 
@@ -511,16 +519,17 @@ def load_demo_plan_context() -> AuthoringContextPacket:
         existing_specs,
         repo_root=REPO_ROOT,
         intro_lines=(
-            "===== AUTHORITATIVE CONCERN X SLICE 1 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
-            "Pass 1 indexed the authoritative docs by resolved methodology constraints, explicit cleanup targets, and slice-level acceptance criteria.",
-            "Pass 2 selected only the sections needed to author the Handover 13 canonical cleanup brief and rendered structured facts plus verbatim source excerpts.",
+            "===== AUTHORITATIVE CONCERN X SLICE 2 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
+            "Pass 1 indexed the authoritative docs by phase-ledger design constraints, brief-field semantics, slice-level file/test targets, and ratified close-out guidance from Slice 1.",
+            "Pass 2 selected only the sections needed to author the Handover 14 canonical ledger brief and rendered structured facts plus verbatim source excerpts.",
             "The source docs remain authoritative. The extracted packet is a deterministic view over those docs, not a replacement for them.",
             "",
             "===== AUTHORITATIVE SOURCE DOC MAP =====",
-            "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X design decisions and explicit removal targets.",
-            "- `docs/active/POST_GRILL_1.md` — post-grill implementation plan with Slice 1 as the recommended first slice.",
-            "Reference-doc expectation: the generated canonical should cite both of those active briefs directly because they materially constrain this cleanup phase.",
-            "Source-of-truth expectation: this phase cleans up planning scaffolding; it must not treat generator scripts or archived drafts as authoritative scope documents.",
+            "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X design decisions for phase ledger + brief semantics.",
+            "- `docs/active/POST_GRILL_1.md` — post-grill implementation plan with Slice 2 objective, files, tests, and acceptance criteria.",
+            "- `docs/canonical/ALFRED_HANDOVER_13.md` — ratified Slice 1 close-out and explicit forward plan to Slice 2.",
+            "Reference-doc expectation: the generated canonical should cite all three of those docs directly because they materially constrain this ledger phase.",
+            "Source-of-truth expectation: the ledger is scaffolding derived from canonical handovers; it must not be described as replacing canonical handovers as authority in Slice 2.",
         ),
     )
 

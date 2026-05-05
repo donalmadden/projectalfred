@@ -147,6 +147,14 @@ documents:
     authoritative: true
     notes: Canonical handover for Concern X Slice 1 — repo cleanup ahead of the seam-discipline migration.
 
+  - current_path: docs/canonical/ALFRED_HANDOVER_14.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover for Concern X Slice 2 — phase ledger schema and seed file.
+
   - current_path: docs/protocol/architecture.md
     kind: protocol_doc
     lifecycle_status: protocol

@@ -96,7 +96,7 @@ def test_validate_required_citable_docs_reports_policy_gaps(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_12.md"
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_13.md"
     source.parent.mkdir(parents=True)
     source.write_text("# x\n", encoding="utf-8")
 
@@ -112,14 +112,14 @@ def test_validate_required_citable_docs_reports_policy_gaps(
     )
 
     assert gnch.validate_required_citable_docs(source) == [
-        "docs/canonical/ALFRED_HANDOVER_12.md"
+        "docs/canonical/ALFRED_HANDOVER_13.md"
     ]
 
 
 def test_load_historical_context_skips_when_source_already_in_authoritative_scope(
     tmp_path: Path,
 ) -> None:
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_12.md"
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_13.md"
     source.parent.mkdir(parents=True)
     source.write_text("# x\n", encoding="utf-8")
     source_key = gnch._repo_relative_doc_path(source)
@@ -138,20 +138,20 @@ def test_build_planner_context_deduplicates_overlap_between_scope_and_history(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_12.md"
+    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_13.md"
     source.parent.mkdir(parents=True)
     source.write_text(
         "# Alfred's Handover Document #11\n\n"
         "## TASK OVERVIEW\n"
         "| # | Task | Deliverable |\n"
         "|---|---|---|\n"
-        "| 1 | Keep | `docs/canonical/ALFRED_HANDOVER_13.md` |\n",
+        "| 1 | Keep | `docs/canonical/ALFRED_HANDOVER_14.md` |\n",
         encoding="utf-8",
     )
 
     scope = (
         "AUTHORITATIVE\n"
-        "----- BEGIN docs/canonical/ALFRED_HANDOVER_12.md -----\n"
+        "----- BEGIN docs/canonical/ALFRED_HANDOVER_13.md -----\n"
         "body"
     )
 
