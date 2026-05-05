@@ -49,7 +49,13 @@ _CANDIDATE_RE = re.compile(r"\[(?:future-doc|future-path)")
 # single-backtick spans. This is targeted markdown awareness, not
 # generalised markdown parsing.
 _FENCED_BLOCK_RE = re.compile(r"```[^\n]*\n.*?\n```", re.DOTALL)
-_INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
+# Inline code span with arbitrary-length backtick delimiter (CommonMark):
+# opening run of N backticks, content that may include shorter runs but
+# not a run of exactly N, closing run of exactly N. The backreference
+# enforces matching delimiter lengths so `` `[future-doc:]` `` (a
+# double-backtick span containing a single-backtick token) is recognised
+# as one inline span and skipped wholesale.
+_INLINE_CODE_RE = re.compile(r"(`+)(?:(?!\1)[^\n])+?\1")
 
 
 @dataclass(frozen=True)

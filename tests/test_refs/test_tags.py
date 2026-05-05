@@ -203,6 +203,32 @@ def test_inline_code_span_does_not_mask_subsequent_real_tag() -> None:
     assert tag.path == "real path"
 
 
+def test_double_backtick_span_around_single_backtick_token_is_skipped() -> None:
+    # Real-world case: post-mortem prose used `` `[future-doc:]` `` to quote
+    # the token literally. The double-backtick wrapper must be treated as a
+    # single inline span so the inner `[future-doc:]` is verbatim.
+    text = "the token `` `[future-doc:]` `` shows the empty-path form"
+    tags, errors = scan_reference_tags(text)
+    assert tags == []
+    assert errors == []
+
+
+def test_triple_backtick_inline_span_around_double_backtick_token() -> None:
+    text = "edge case ``` `` `[future-path:]` `` ``` and done"
+    tags, errors = scan_reference_tags(text)
+    assert tags == []
+    assert errors == []
+
+
+def test_real_tag_after_double_backtick_quoted_token() -> None:
+    text = (
+        "Discuss `` `[future-doc:]` `` as a label, then a real one: "
+        "[future-doc: real path]."
+    )
+    [tag] = extract_reference_tags(text)
+    assert tag.path == "real path"
+
+
 def test_scan_collects_tags_and_errors_without_raising() -> None:
     text = (
         "good [future-doc: a]\n"
