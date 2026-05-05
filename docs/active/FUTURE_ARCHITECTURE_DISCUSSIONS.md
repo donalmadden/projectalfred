@@ -154,3 +154,34 @@ The most promising future shape for Alfred is not "another agent UI" and not "a 
 > a document-mediated coordination layer embedded in the `docs/` folder of a code project, where markdown files act as the shared protocol between humans and AI tools.
 
 That idea is strong enough to pursue, but not yet mature enough to declare as finalized canonical architecture.
+
+---
+
+## Parked: Socratic grilling as a first-class authoring mode
+
+**Captured:** 2026-05-01, during the `HANDOVER_WORKFLOW_DISCUSSION.md` grilling session.
+
+The Socratic grilling pattern — walking the user branch-by-branch down a decision tree, asking one question at a time with a recommended answer attached, updating `CONTEXT.md` inline as terms resolve, and offering ADRs only when a decision is hard-to-reverse + surprising + a real trade-off — has been concretely valuable for designing Alfred itself.
+
+It is a candidate first-class authoring mode in Alfred:
+
+- "Draft a brief by grilling me" alongside Alfred's other authoring entry points.
+- Applies to stories, plans, and canonical handovers — anywhere a human-authored editorial seed feeds the protocol.
+- Closes the property #6 gap on brief authoring: instead of a frontier model writing a brief from prose, a frontier model interviews the human to extract the brief field-by-field, with the human ratifying every answer. The smart model is at the *input* of the seam, not at the seam itself.
+- Output is a structured brief object (the YAML the renderer consumes), plus inline updates to CONTEXT.md and any ADRs the conversation crystallises.
+
+Not for now. Phase 5 just landed and there is workflow work ahead of this. Recorded so it does not get lost.
+
+---
+
+## Parked: Section contracts for non-handover doc classes
+
+**Captured:** 2026-05-01, during the `HANDOVER_WORKFLOW_DISCUSSION.md` grilling session.
+
+The lightweight section contract landing now (proposal J option (ii)) covers only the `canonical_handover` doc class — because that is the only class an extractor currently depends on. Charter, plan, scenario, outline, kickoff-outline, and operational-runbook docs remain conventionally structured but **not formally contracted**.
+
+The deferred work (proposal J option (iii)): declare section contracts for the other planning-doc classes too. Each contract names required headings, semantic classes (`hard_rules`, `scope`, `tasks`, `approval_gate`, `success_criteria`, `post_mortem`, `non_goals`), verbatim-vs-extracted treatment, and authoritative-vs-historical-vs-prompt-only-vs-external-workspace-facing role.
+
+Trigger to revisit: when a deterministic extractor needs to read a non-handover doc class to populate something downstream — most likely the **(b)-later** path for ledger authorship, where an extractor pre-populates ledger fields from the demo plan. At that point, the demo-plan doc class needs a contract. Not before.
+
+Don't expand scope here pre-emptively. Each contract added is a real commitment to a heading vocabulary and a maintenance burden on doc authors.

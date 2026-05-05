@@ -8,13 +8,14 @@ ProjectAlfred — operationalises document-mediated, checkpoint-gated agent coor
 
 ## Core Methodology (non-negotiable)
 
-These five properties are the foundation. Every design decision must preserve them:
+These six properties are the foundation. Every design decision must preserve them:
 
 1. **Document as protocol** — the handover document is the control surface, not a side-channel. Never replace it with hidden state.
 2. **Checkpoint-gated execution** — deterministic decision tables at defined gates. No emergent evaluation.
 3. **Reasoning/execution isolation** — executor never makes strategic decisions; reviewer never executes code. Strict epistemic separation.
 4. **Inline post-mortem → forward plan** — failure analysis embedded in the execution artifact, not a separate process.
 5. **Statelessness by design** — each session cold-starts from the document. Context loss is a feature.
+6. **Frontier-model-independent at the seams** — the protocol's connective tissue (identity, scope-source bindings, manifest data, gate inputs) stays coherent without requiring a smart model. Frontier models do reasoning *inside* a stage; the boundaries between stages are deterministic and human-auditable.
 
 ## Tech Stack
 

@@ -1,10 +1,46 @@
 # Handover Workflow Discussion
 
-> **Status:** Open. Park until the blank-project kickoff demo plan is fully complete (through Phase 5). Then revisit and elevate to a first-class Alfred workflow.
+> **Status:** Active design constraint. Phase 5 demo has run (commit `08e7ff8`); park condition lifted 2026-05-01. Promoted from "nice-to-have engineering hygiene" to enforcing core property #6 (frontier-model-independent at the seams).
 >
 > **Owner:** Donal.
 >
-> **Linked to:** [ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md](./ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md), [scripts/generate_next_canonical_handover.py](../../scripts/generate_next_canonical_handover.py).
+> **Linked to:** [ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md](./ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md), [scripts/generate_next_canonical_handover.py](../../scripts/generate_next_canonical_handover.py), [../../CONTEXT.md](../../CONTEXT.md), [../adr/](../adr/).
+
+## Resolutions (2026-05-01)
+
+This document was resolved through a single grilling session on 2026-05-01. The historical analysis below (Why This Discussion Exists, What The Current Workflow Looks Like, Fresh Findings, Proposal Sketch, Open Questions) is preserved as the record of what was discovered and considered. Resolutions are summarized here and annotated inline below.
+
+### Methodology change
+
+- **Frontier-model-independence at the seams** is now the **sixth core property** in [CLAUDE.md](../../CLAUDE.md). The protocol's connective tissue (identity, scope-source bindings, ledger data, gate inputs) stays coherent without requiring a smart model. See [ADR-0001](../adr/0001-frontier-model-independence-as-core-property.md).
+
+### Concerns split
+
+The original proposals split into two concerns:
+
+- **Concern X — Seam discipline.** Methodology-level. Permanent. Justified by property #6. **Resolved in full this session.**
+- **Concern Y — Prompt economy.** Engineering-level. Transient. May be obsoleted by frontier model improvements. **Deferred.** The shipped `--historical-context-mode summary` path is deterministic extraction (property-#6-clean) and counts as sufficient Y work for now. Proposals G and H remain parked.
+
+### Resolved (Concern X)
+
+- **Phase ledger** replaces hand-edited identity constants. Derived view of canonical handovers; authority flows handover → ledger, never the reverse. Not called a "manifest" (term taken). See `Phase Ledger` in [CONTEXT.md](../../CONTEXT.md).
+- **Brief** is the structured editorial seed for the unratified phase: title, goal, hard rules, task seeds (id + title + intent), out-of-scope, definition-of-done, follow-ups. **Human-authored**; deterministic extractor from demo plan is deferred future work. See [ADR-0002](../adr/0002-human-authors-the-brief.md) and `Brief` in [CONTEXT.md](../../CONTEXT.md).
+- **Context Roles**: three roles only (`scope`, `carry_forward`, `continuity`), each with a rendering rule, with dedup precedence `scope` > `carry_forward` > `continuity`. See `Context Roles` in [CONTEXT.md](../../CONTEXT.md).
+- **Doc class section contract**: `canonical_handover` only, declared in `docs/DOCS_MANIFEST.yaml`. Other doc classes stay uncontracted. Lifts the implicit heading-knowledge from code into a reviewable artifact. See `Doc Class` in [CONTEXT.md](../../CONTEXT.md).
+- **Reference tags** stay in prose (`[future-doc:]`, `[future-path:]`). The doc's own characterization of them as a "stopgap" was wrong — they are the right shape because they keep the document self-describing (property #1). See `Reference Tags` in [CONTEXT.md](../../CONTEXT.md).
+- **Validation chain**: deterministic only. Pre-flight (5 checks) + post-generation (6 checks). **No LLM-judge anywhere, ever.** Semantic drift is the human reviewer's job at the promotion gate. See [ADR-0003](../adr/0003-no-llm-judge-in-validation-chain.md) and `No-LLM-Judge Constraint` in [CONTEXT.md](../../CONTEXT.md).
+- **Phase-level ratification** (not decision-level). Atom of the methodology is the phase.
+- **Renderer-fixture tests** replace prose-assertion tests. Three currently-failing assertions in `test_generate_next_canonical_handover.py` get **deleted** during migration, not fixed.
+- **Failed-candidate validators**: short-circuit on `*_FAILED_CANDIDATE.md` filename pattern; skip id/filename checks; everything else still runs. They remain a debugging surface, not a protocol artifact.
+
+### Removed
+
+- **`scripts/dogfood_run.py` and `scripts/generate_phase7_canonical.py` (plus their tests) are obsolete and slated for deletion** as part of the migration. Their continued existence makes the property #6 violation pattern look more entrenched than it is.
+
+### Deferred (logged in `FUTURE_ARCHITECTURE_DISCUSSIONS.md`)
+
+- **Section contracts for non-handover doc classes** (charter, plan, scenario, outline) — proposal J option (iii). Triggered when a deterministic extractor needs to read those classes, most likely the (b)-later ledger-authorship path.
+- **Socratic grilling as a first-class authoring mode** — applies the methodology to brief authoring itself. The smart model interviews the human; the human ratifies every answer.
 
 ## Why This Discussion Exists
 
@@ -124,6 +160,12 @@ The current experiment takes the safer version of that idea:
 
 This is closer to a "shadow view" than a summary in the canonical sense. The important workflow idea is that Alfred may need a **prompt-facing representation layer** distinct from its human-facing record layer.
 
+Current implementation status:
+
+- This idea did land in code, but narrowly: the handover-generation scripts now support a bounded historical-context summary path (`--historical-context-mode summary`, default) so the planner can consume prior handovers more cheaply.
+- That shipped path is a **context-budgeting layer for planner input**, not a mutation of the canonical handover artifact on disk.
+- In other words, Alfred currently summarizes prior handovers for prompt assembly, but does **not** automatically rewrite or compress the human-facing canonical handover documents themselves.
+
 ### 6. Selective authoring exposed an implicit planning-doc schema
 
 The next experiment after prompt shadows was to stop stuffing whole docs into the planner and instead build a deterministic **authoring context packet** from selected sections of five source documents. That worked well enough to cut the packet from roughly 57k raw source characters to roughly 28k prompt characters without rewriting the source docs.
@@ -144,11 +186,13 @@ That means Alfred is already relying on an implicit planning-doc schema, just on
 
 This matters for future docs such as `ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md`. If Alfred wants to selectively load or query those documents safely, it will eventually need an explicit contract for what kind of planning document each file is and which sections carry which semantics. Otherwise every selective-loading improvement risks turning into ad hoc heading heuristics embedded in one script.
 
-## Proposal Sketch — Not For Implementation Yet
+## Proposal Sketch — Now Resolved
 
-A first-class workflow could look like this. None of this is settled; the point is to give the after-Phase-5 revisit a concrete starting shape to argue with.
+The proposals below are preserved as the original sketch. Each carries an inline resolution.
 
 ### A. Phase manifest as the source of truth
+
+> **RESOLVED.** Adopted with two changes: (1) renamed to **phase ledger** to avoid overloading the existing `DOCS_MANIFEST.yaml`; (2) explicitly typed as a *derived view* of canonical handovers, not a protocol artifact. Authority flows handover → ledger. See `Phase Ledger` in `CONTEXT.md`.
 
 Move identity and scope-source data out of the generator script and into a declarative phase manifest, e.g. `docs/active/PHASE_MANIFEST.yaml`:
 
@@ -194,6 +238,8 @@ Hand-editing the generator script disappears. Advancing to the next phase become
 
 ### B. Sprint goal as a structured object, not a paragraph
 
+> **RESOLVED.** Adopted as the **brief**, with extra fields the original proposal omitted: `hard_rules` (protocol invariants, never model-invented) and `tasks` (ordered task seeds — `{id, title, intent}` triples, because task decomposition is editorial work that must stay with the human). Brief is human-authored. See `Brief` in `CONTEXT.md` and ADR-0002.
+
 The sprint goal today is a 20-line prose paragraph hand-written by Claude. It could be a structured object:
 
 ```yaml
@@ -221,6 +267,8 @@ The renderer assembles these into the prose paragraph the planner needs. The str
 
 ### C. Pre-flight validators before the planner runs
 
+> **RESOLVED.** Adopted with a fixed 5-check minimum: scope-source paths exist; carry-forward phase ids exist and are ratified; previous handover's `next_handover_id` matches; no path appears in more than one context role; reference tags parse. Hard-fail before any LLM call. See ADR-0003.
+
 Before invoking the planner, run cheap deterministic checks:
 
 - Every `scope_sources` path exists on disk
@@ -232,15 +280,21 @@ If any check fails, bail before any LLM call. This catches "stale phase number i
 
 ### D. Test the renderer, not the prose
 
+> **RESOLVED.** Adopted. The three currently-failing prose assertions in `test_generate_next_canonical_handover.py` are deleted during migration, not fixed. New tests fixture a known ledger and assert renderer output deterministically.
+
 `tests/test_scripts/test_generate_next_canonical_handover.py` currently asserts properties of the prose constants (`assert "Phase 1" in SPRINT_GOAL`). Those assertions go stale every phase advance — which is why we currently have three pre-existing failing tests in that file that have been failing since Phase 2.
 
 If the renderer takes manifest input and produces grounding text, the tests can fixture a known manifest and assert the renderer's output deterministically. No prose-level assertions; no churn per phase.
 
 ### E. Optional: post-generation validators
 
+> **RESOLVED — and elevated from "optional" to "required".** Six checks: phase-number consistency; `next_handover_id` declared and correct; citation closure (every authoritative-doc reference appears in `scope_sources` ∪ `scope_carry_forward`); task closure (output sections ↔ brief task seeds); hard-rule presence (verbatim or declared near-verbatim); reference-tag parsing. **No LLM-judge anywhere in the chain.** See ADR-0003.
+
 After the planner produces a draft, additional cheap validators can check it cites only `scope_sources` from the manifest, mentions the right phase number, and includes the expected `next_handover_id`. The current `validate_alfred_handover.py` already does some of this; tightening the integration is a small addition.
 
 ### F. Context assembly should be provenance-aware
+
+> **RESOLVED.** Adopted with three roles only — `scope`, `carry_forward`, `continuity` — each with role-specific *rendering* (not just dedup). `scope` and non-handover `carry_forward` get full text; canonical-handover `carry_forward` and `continuity` get deterministic summary via the existing extractor. Dedup precedence: `scope` > `carry_forward` > `continuity`. Three roles is a methodology-level commitment; adding a fourth requires re-arguing the rendering and dedup rules. See `Context Roles` in `CONTEXT.md`.
 
 The generator should stop treating planner context as one opaque blob and instead assemble a typed bundle:
 
@@ -257,7 +311,15 @@ That bundle should support deterministic checks before the planner runs:
 
 The recent Phase 3 fix implemented the smallest version of this idea inside `generate_next_canonical_handover.py`. The broader workflow should treat it as a first-class design requirement.
 
+Important clarification:
+
+- The shipped Phase 3 implementation is specifically about reducing planner context size while preserving continuity.
+- It should not be described as "handover compression" in the artifact sense, because the canonical markdown remains the reviewed protocol surface.
+- The unresolved design question is whether Alfred should ever grow from "summarize for prompt assembly" into "derive alternate prompt-facing representations" more systematically, and if so, how to keep that reviewable.
+
 ### G. Prompt shadows should be declarative, generated, and non-citable
+
+> **DEFERRED (Concern Y).** The shipped `--historical-context-mode summary` path is a deterministic in-memory extractor and counts as the "smallest version" of this idea (property-#6-clean). On-disk shadow files are not adopted. Revisit only if prompt-bulk failures recur after Concern X lands.
 
 If Alfred adopts prompt shadows more broadly, they should follow a few hard constraints:
 
@@ -270,6 +332,8 @@ If Alfred adopts prompt shadows more broadly, they should follow a few hard cons
 That gives Alfred a way to manage prompt budgets without rewriting history or blurring the contract between "what the team ratified" and "what the planner needs to read quickly."
 
 ### H. Prompt-markdown transpilation could be a middle path before full compression
+
+> **DEFERRED (Concern Y).** Frontier models with bigger windows and better tool-use will likely obsolete most of this. Revisit only if prompt-bulk failures recur after Concern X lands and after deterministic context summarization has been pushed further.
 
 There is likely a useful middle ground between:
 
@@ -365,6 +429,8 @@ The important distinction is that this is still **markdown**, not a bespoke bina
 
 ### I. Reference semantics should be declared, not inferred from prose
 
+> **RESOLVED — and the proposal's own characterization of `[future-doc:]` / `[future-path:]` tags as a "stopgap" was wrong.** Tags-in-prose ARE a typed annotation layer in markdown; they are deterministic to parse and they keep the document self-describing (property #1). Moving them to manifest metadata would weaken property #1, not strengthen it. The tags are kept as the canonical solution. Syntax locked in `CONTEXT.md` (`Reference Tags`). A possible third tag `[deferred-doc:]` is held until a concrete case requires it.
+
 The `[future-doc: ...]` / `[future-path: ...]` convention is a good stopgap, but the more general need is:
 
 - a way to mark that a path belongs to the external demo workspace rather than this repo
@@ -374,6 +440,8 @@ The `[future-doc: ...]` / `[future-path: ...]` convention is a good stopgap, but
 That may eventually belong in the phase manifest, a richer docs-manifest entry type, or a small typed annotation layer in markdown. The important point is that "this path is intentionally future/external" is workflow metadata, not incidental wording.
 
 ### J. Planning docs may need lightweight section contracts
+
+> **PARTIALLY RESOLVED (option ii).** The `canonical_handover` doc class gets a declared section contract in `docs/DOCS_MANIFEST.yaml`, because it is the only class an extractor depends on today (the implicit contract was already half-implemented inside `load_historical_context`). Other doc classes (charter, plan, scenario, outline) stay uncontracted. The full version of J — section contracts for every planning-doc class — is **deferred** and logged in `FUTURE_ARCHITECTURE_DISCUSSIONS.md`. Trigger to revisit: when a deterministic extractor needs to read a non-handover doc class (most likely the (b)-later ledger-authorship path). See `Doc Class` in `CONTEXT.md`.
 
 The selective authoring packet suggests a new middle ground between "free-form markdown" and "fully structured data model":
 
@@ -391,38 +459,40 @@ For example, a future contract for a planning-doc type could declare:
 
 That would let Alfred treat something like a frozen scenario doc, charter doc, kickoff outline, or canonical handover as a known document class rather than as arbitrary prose. The result should be safer selective loading, more stable prompt assembly, and less dependence on frontier-model judgment just to understand Alfred's own planning artifacts.
 
-## Open Questions To Revisit
+## Open Questions — Now Resolved
 
-1. **Where does editorial content live?** The current `SPRINT_GOAL` paragraph carries judgment about what the next phase should and shouldn't include — that is real planning work, not boilerplate. Splitting it into structured fields (proposal B) preserves the judgment but changes its surface. Is that a net win or just relocated complexity?
+1. **Where does editorial content live?** **RESOLVED.** Net win, not relocated complexity. The structured brief (proposal B as adopted) keeps the editorial judgment but exposes it as reviewable fields rather than buried prose. Hard rules and task seeds — the parts the original sketch missed — are *especially* judgment-bearing and now have explicit homes. See ADR-0002.
 
-2. **Manifest authorship.** Who writes the manifest entry for phase N+1? If a frontier model writes it, we have not eliminated the dependency, only shifted it. If a human writes it from the demo plan, what tooling makes that pleasant?
+2. **Manifest authorship.** **RESOLVED.** Human authors the brief. A deterministic extractor from the demo plan is deferred future work, not abandoned, but requires the demo-plan doc class to honor an explicit section contract first. Frontier-model authorship was rejected — it shifts the seam, not eliminates it. See ADR-0002.
 
-3. **Granularity of "ratified."** Today, "ratified" means "the canonical handover was promoted." Should the manifest mark individual decisions (Phase 1's three frozen specs) as ratified, or only whole phases? The former gives finer-grained scope-carry-forward; the latter is simpler.
+3. **Granularity of "ratified."** **RESOLVED.** Phase-level. The methodology's atom is the phase; decision-level ratification adds complexity for marginal benefit and there is no concrete need. Revisited only if a future case requires phase-N to carry forward part of phase-M.
 
-4. **Backward compatibility.** Several scripts in `scripts/` (`dogfood_run.py`, `generate_phase7_canonical.py`, etc.) follow the same pattern of hand-edited identity constants. A manifest-driven renderer would either subsume them or coexist with them awkwardly.
+4. **Backward compatibility.** **RESOLVED differently than expected.** `scripts/dogfood_run.py` and `scripts/generate_phase7_canonical.py` are obsolete. They (and their tests) get **deleted** as part of the migration. No coexistence problem, no migration cost.
 
-5. **Validator coverage of editorial drift.** The biggest current failure mode is "the generated draft mentions the wrong phase or includes deliverables out of scope." A validator can catch the first mechanically; the second requires interpreting prose. How much can be deterministic?
+5. **Validator coverage of editorial drift.** **RESOLVED.** Mechanical validators handle phase consistency, id sequencing, citation closure, task closure, hard-rule presence, and reference-tag parsing. Semantic drift ("is this deliverable in scope?") is the human reviewer's job at the promotion gate. **No LLM-judge anywhere in the chain, ever.** See ADR-0003.
 
-6. **Stale tests.** `test_generate_next_canonical_handover.py` has three failing assertions today (since Phase 2). They are quietly excluded from "Phase 2 acceptance" because they pre-existed. A manifest-driven approach would let those tests be regenerated from the manifest fixture, so phase advances stop creating test rot.
+6. **Stale tests.** **RESOLVED.** The three failing assertions are deleted during migration, not fixed. New tests fixture a known ledger and assert renderer output deterministically. Proposal D as adopted.
 
-7. **Failed-candidate lifecycle.** Should failed-candidate artifacts have a dedicated validation mode and metadata contract, or should the workflow avoid validating them directly and only validate canonical-target content before archive writeout?
+7. **Failed-candidate lifecycle.** **RESOLVED.** Validators short-circuit on the `*_FAILED_CANDIDATE.md` filename pattern and skip id/filename checks; everything else still runs. They remain a debugging surface, not a protocol artifact, and don't get a richer metadata contract.
 
-8. **Prompt-budget policy.** Once scope is assembled from multiple ratified artifacts, what is the rule for "full text vs derived summary vs omit as duplicate"? Today that choice is ad hoc and reactive.
+8. **Prompt-budget policy.** **DEFERRED (Concern Y).** The shipped fallback chain (`full → summary → minimal → none`) is reactive — fires after the planner returns `{}`. A clean version pre-estimates prompt size and picks the mode preemptively. Worth doing eventually but not now; frontier model improvements may obsolete it.
 
-## Constraints On The Revisit
+## Constraints That Held Through The Revisit
 
-- **Park until the demo plan is complete (Phase 5).** Doing this now would broaden Phase 3 scope and risk the demo slice. The demo's value is "narrowness honestly executed"; metawork on the generator is not in that slice.
-- **Don't pre-commit to the proposal sketch above.** Treat it as one starting point among several.
-- **Match the methodology's epistemic separation.** Whatever lands should keep editorial decisions (what's in scope) reviewable as documents, not buried in code. The handover document remains the protocol surface; the manifest is scaffolding for generating it.
-- **No new frontier-model dependencies.** A solution that "uses Claude better" is the same anti-pattern in nicer clothes. The goal is to reduce the surface area where a frontier model's careful reading is the only thing keeping the scaffolding consistent.
+The original constraints on the revisit are noted below. The first ("Park until Phase 5") expired on 2026-05-01. The remaining three guided the resolutions and remain active design constraints for the implementation work that flows out of this discussion.
 
-## What Would Trigger Revisiting
+- ~~**Park until the demo plan is complete (Phase 5).**~~ Lifted 2026-05-01 (commit `08e7ff8` shipped the demo).
+- **Don't pre-commit to the proposal sketch above.** Held — several proposals were adopted with substantive changes (A renamed; B extended with hard rules and task seeds; F tightened to three roles with rendering rules; I rejected its own "stopgap" framing; J adopted only in option-(ii) form).
+- **Match the methodology's epistemic separation.** Held — every editorial decision is reviewable as a document (brief in YAML, canonical handover in markdown, ADRs for methodology choices). The renderer/ledger is scaffolding only.
+- **No new frontier-model dependencies.** Held — the brief is human-authored, the validation chain is deterministic, the historical-context summarizer is deterministic extraction. The seductive "use Claude better" alternatives (LLM-author the brief, LLM-judge the output) were rejected explicitly. See ADRs 0002 and 0003.
 
-Any of the following:
+## Triggers That Fired
 
-- A canonical handover advance produces a generated draft that ships with the wrong phase number or stale scope sources, and the issue isn't caught by the existing validators.
-- The hand-edit step becomes the longest part of advancing a phase.
-- A new project picks up Alfred and discovers the same hand-edit ritual must be reinvented for its own demo plan.
-- Phase 5 closes and we have rehearsal time to invest in tooling rather than features.
+The original "What Would Trigger Revisiting" list. Two fired by 2026-05-01:
 
-When one of those triggers fires, this document is the starting brief.
+- ~~A canonical handover advance produces a generated draft that ships with the wrong phase number or stale scope sources, and the issue isn't caught by the existing validators.~~ — Did not fire.
+- ~~The hand-edit step becomes the longest part of advancing a phase.~~ — Did not fire.
+- ~~A new project picks up Alfred and discovers the same hand-edit ritual must be reinvented for its own demo plan.~~ — Did not fire.
+- **Phase 5 closes and we have rehearsal time to invest in tooling rather than features.** — **Fired.** Demo ran on commit `08e7ff8`, park condition lifted, this doc moved to active design constraint.
+
+This document is no longer the "starting brief" for a future revisit — that revisit happened. It is now the **historical record of the resolved design discussion**, with implementation work flowing out of it tracked elsewhere.
