@@ -28,7 +28,7 @@ def _brief(**overrides) -> dict:
         "tasks": [{"id": "t1", "title": "Models", "intent": "Typed schema"}],
         "out_of_scope": ["renderer changes"],
         "definition_of_done": ["tests pass"],
-        "follow_ups": [],
+        "followups_from_prior_phase": [],
         **overrides,
     }
 
@@ -54,7 +54,7 @@ def test_brief_defaults_empty_lists() -> None:
     assert b.tasks == []
     assert b.out_of_scope == []
     assert b.definition_of_done == []
-    assert b.follow_ups == []
+    assert b.followups_from_prior_phase == []
 
 
 def test_brief_rejects_missing_required_fields() -> None:

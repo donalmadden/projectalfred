@@ -25,7 +25,7 @@ class Brief(BaseModel):
     tasks: list[TaskSeed] = Field(default_factory=list)
     out_of_scope: list[str] = Field(default_factory=list)
     definition_of_done: list[str] = Field(default_factory=list)
-    follow_ups: list[str] = Field(default_factory=list)
+    followups_from_prior_phase: list[str] = Field(default_factory=list)
 
 
 PhaseStatus = Literal["ratified", "planning"]
@@ -56,6 +56,7 @@ class Phase(BaseModel):
 
 class PhaseLedger(BaseModel):
     project: str
+    plan_path: str | None = None
     phases: list[Phase]
 
     @model_validator(mode="after")
