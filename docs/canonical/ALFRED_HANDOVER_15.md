@@ -199,15 +199,27 @@ pyright
 > cold-start from this artifact alone.
 
 **What worked:**
-- *executor to fill*
+- Slice discipline held: `scripts/generate_next_canonical_handover.py` was not modified, no new validator phases were introduced, and no third tag type was added.
+- The parser landed as a single, narrow module ([src/alfred/refs/tags.py](src/alfred/refs/tags.py)) with three deterministic public functions: `extract_reference_tags` (raises), `iter_reference_tags` (raises mid-iteration), and `scan_reference_tags` (collects all errors). Validators that want fail-fast and validators that want surface-everything both have a clean entry point.
+- Pyright + 564 tests pass after the migration; the existing reference-doc validator tests passed unchanged against the refactored implementation, which confirms public signatures (`path_has_future_tag`, `link_is_inventory_exempt`) stayed stable.
+- Repo-wide audit (Task 4) found 41 canonical tags across `docs/**/*.md` and **0** real malformed tags, so no doc edits were required. The `[future-doc:]`-style references in `HANDOVER_WORKFLOW_DISCUSSION.md`, `POST_GRILL_1.md`, and `ALFRED_HANDOVER_15.md` are all inside backticks and are correctly skipped by the parser.
+- Behaviour-correctness improvement landed: a malformed near-miss like `[future-doc bad]` no longer silently exempts a nearby `docs/...md` path from inventory/existence checks. This matches the Slice 3 acceptance criterion to "reject malformed variants deterministically."
 
 **What was harder than expected:**
-- *executor to fill*
+- The HANDOVER_15 plan named `scripts/validate_alfred_handover.py` as the integration target, but that script is a *structural* gate and has zero reference-tag handling. The ad-hoc regex (`_EXPLICIT_FUTURE_PATH_TAG_RE`) actually lives in [src/alfred/tools/reference_doc_validator.py:23-26 (pre-refactor)](src/alfred/tools/reference_doc_validator.py) and is consumed by `scripts/validate_alfred_planning_facts.py`. The discrepancy was caught at CHECKPOINT-1 evidence and flagged before proceeding.
+- Strict parsing initially produced 8 false positives across three real docs (`HANDOVER_WORKFLOW_DISCUSSION.md`, `POST_GRILL_1.md`, `ALFRED_HANDOVER_15.md`) — every one of them inside markdown code spans documenting the tag grammar itself (e.g. `` `[future-doc:]` `` as a label). Without code-span awareness, every doc that *describes* the parser would fail the parser. Resolved by adding narrow code-span skipping (single-backtick spans + triple-backtick fenced blocks); explicitly not a generalised markdown parser.
+- The original `iter_reference_tags` API raised mid-iteration, which is wrong for validators that want every error in one pass. Refactored to share a single private `_walk()` generator with both raising (`iter_reference_tags`/`extract_reference_tags`) and collecting (`scan_reference_tags`) wrappers.
 
 **Decisions made during execution (deviations from this plan):**
-- *executor to fill — each deviation must include: what changed, why, who approved*
+- *Task 3 retargeting.* What changed: integrated the shared parser into [src/alfred/tools/reference_doc_validator.py](src/alfred/tools/reference_doc_validator.py) (consumed by `scripts/validate_alfred_planning_facts.py`) instead of `scripts/validate_alfred_handover.py`. End-to-end coverage was added to [tests/test_scripts/test_validate_alfred_planning_facts.py](tests/test_scripts/test_validate_alfred_planning_facts.py). `scripts/validate_alfred_handover.py` was left unchanged — adding tag validation there would be new scope, not a refactor. Why: the named script had no ref-tag handling; the actual duplicated regex was elsewhere. Approved by: human (Donal), in-band, recorded after CHECKPOINT-1 evidence.
+- *Markdown code-span skipping in the parser.* What changed: parser now skips text inside single-backtick inline code spans and triple-backtick fenced blocks (`_FENCED_BLOCK_RE`, `_INLINE_CODE_RE`). Why: without it, every doc that documents the tag grammar in prose would be flagged as malformed; this is targeted, not "generalised markdown parsing." Approved by: executor judgment, recorded here. Considered the alternative of editing 3 docs to use a non-bracket form; rejected as it would amputate the docs' ability to discuss their own grammar.
+- *Added `scan_reference_tags()` to the parser API.* What changed: third public function alongside the two named in the plan, returning `(tags, errors)` for non-raising consumption. Why: validators need to surface every malformed tag in one pass; raising-on-first would either crash the validator or be silently caught and dropped. Approved by: executor judgment.
+- *Reused `ReferenceDocFinding` with `issue_type="malformed_reference_tag"`* rather than introducing a new finding payload type. Why: keeps the validator-finding taxonomy stable; semantics fit (the malformed tag is a reference-doc hygiene issue). Approved by: executor judgment.
 
 **Forward plan:**
-- *executor to fill*
+- HANDOVER_16 should pick up Slice 4 (doc-class section contracts) per `docs/active/POST_GRILL_1.md`. The reference-tag parser is now the single source of truth for tag semantics — future validators should consume `alfred.refs.tags` rather than reach for a regex.
+- A second consumer to consider migrating: [src/alfred/agents/planner.py:120-122](src/alfred/agents/planner.py#L120-L122) currently embeds the canonical tag form in a prompt string. That's a *production* of tags, not a parse, so it's correctly out of scope for Slice 3, but Slice 4 may want a single-source `CANONICAL_TAG_DOC_EXAMPLE` constant to keep the prompt and the parser in lockstep.
+- The audit script used in this slice (`python -c "from alfred.refs.tags import scan_reference_tags; ..."`) is ad-hoc; if doc audits become recurrent, promoting it to a `scripts/audit_reference_tags.py` is the natural next move. Deferred — Slice 3 found nothing, so the cost of writing the script wasn't justified.
+- The proximity model in `path_has_future_tag` (32-char look-behind, 160-char look-ahead) is preserved verbatim from the previous regex-based implementation. It is not load-bearing for Slice 3 correctness, but a future Slice may want to revisit "what does 'attached to' mean?" with the parser's structured spans now available.
 
 **next_handover_id:** ALFRED_HANDOVER_16
