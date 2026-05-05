@@ -166,15 +166,17 @@ pytest -q
 > cold-start from this artifact alone.
 
 **What worked:**
-- *executor to fill*
+- Deletions were clean: zero references to the three removed files across `scripts/`, `src/`, `tests/`, `pyproject.toml`, and `.github/`. No import edits needed in `generate_next_canonical_handover.py`.
+- Full suite passed at both checkpoints (`517 passed, 2 skipped` after Task 1; `514 passed, 2 skipped` after Task 2). The 3-test reduction exactly matched the 3 deleted prose-assertion tests — no collateral failures.
+- Identifying the three prose-assertion tests was unambiguous once the git diff between `af2c71f` and `4103fa2` was inspected: `test_sprint_goal_is_scoped_to_concern_x_slice_1`, `test_load_historical_context_summary_is_bounded` (the `DEMO_PLAN_GROUNDING` assertion), and `test_load_demo_plan_context_builds_targeted_authoring_packet`.
 
 **What was harder than expected:**
-- *executor to fill*
+- The three stale tests were not failing at execution time: commit `4103fa2` (HANDOVER 13 updated) had already updated them with new prose assertions rather than deleting them, which is exactly what the handover prohibits ("Do not fix the stale prose-assertion tests by weakening assertions or rewriting expected prose"). Required git archaeology (`git diff af2c71f 4103fa2`) to identify which tests had been rewritten instead of deleted, then deleted them as originally specified.
 
 **Decisions made during execution (deviations from this plan):**
-- *executor to fill — each deviation must include: what changed, why, who approved*
+- None. All three tasks executed exactly as specified. No edits to `generate_next_canonical_handover.py` were needed (no imports of deleted scripts existed).
 
 **Forward plan:**
-- *executor to fill*
+- Slice 1 complete. Repo is clean of the false-signal artifacts. Concern X Slice 2 (phase ledger model + loader) is the next unit of work per `docs/active/POST_GRILL_1.md`. A new handover (ALFRED_HANDOVER_14) should scope Slice 2 only.
 
 **next_handover_id:** ALFRED_HANDOVER_14
