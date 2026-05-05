@@ -12,12 +12,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 import urllib.error
 import urllib.request
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping, Optional
+from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE_URL = "http://127.0.0.1:8000"

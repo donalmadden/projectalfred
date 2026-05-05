@@ -8,7 +8,6 @@ import pytest
 from alfred.ledger.loader import LedgerLoadError, load_ledger
 from alfred.ledger.models import PhaseLedger
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SEED_PATH = REPO_ROOT / "docs" / "active" / "PHASE_LEDGER.yaml"
 

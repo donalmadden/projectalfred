@@ -514,6 +514,7 @@ def _board_writer_handover(
     handover_id: str, task_id: str
 ) -> HandoverDocument:
     from datetime import date as _date
+
     from alfred.schemas.handover import HandoverContext
 
     return HandoverDocument(

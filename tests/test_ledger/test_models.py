@@ -4,8 +4,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from alfred.ledger.models import Brief, Phase, PhaseLedger, TaskSeed
-
+from alfred.ledger.models import Brief, Phase, PhaseLedger
 
 # ---------------------------------------------------------------------------
 # Helpers
