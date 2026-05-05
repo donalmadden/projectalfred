@@ -1,17 +1,18 @@
-"""Generate the canonical handover for Concern X Slice 3 of Alfred's seam-discipline migration.
+"""Generate the canonical handover for Concern X Slice 4 of Alfred's seam-discipline migration.
 
 Follows the same validated canonical-generation path as the prior
-Slice 2 generator, but the planner is now grounded on the canonical
-reference-tag contract in `CONTEXT.md`, the resolved Concern X workflow
+Slice 3 generator, but the planner is now grounded on the canonical
+`Doc Class` contract in `CONTEXT.md`, the resolved Concern X workflow
 discussion, the post-grilling implementation plan, and the newly-ratified
-Slice 2 canonical handover (`docs/canonical/ALFRED_HANDOVER_14.md`).
-The target output is `docs/canonical/ALFRED_HANDOVER_15.md`, written
+Slice 3 canonical handover (`docs/canonical/ALFRED_HANDOVER_15.md`).
+The target output is `docs/canonical/ALFRED_HANDOVER_16.md`, written
 only after the structural and grounding validators pass.
 
-Scope of the generated handover: Concern X Slice 3 only — lock the
-deterministic `[future-doc:]` / `[future-path:]` parser and migrate the
-canonical validator to that shared parser, while leaving section
-contracts, context bundles, renderer replacement, and validator-chain
+Scope of the generated handover: Concern X Slice 4 only — make the
+`canonical_handover` section contract explicit in `docs/DOCS_MANIFEST.yaml`
+and migrate the generator's historical-section extraction onto that
+declared contract, while leaving context bundles, renderer replacement,
+and validator-chain
 changes to later slices.
 """
 from __future__ import annotations
@@ -50,9 +51,9 @@ _LOCAL_PATH_RE = re.compile(
     r"`(?P<path>(?:docs|src|scripts|tests|configs|evals|\.github)/[A-Za-z0-9_./\-]+)`"
 )
 
-EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_15"
-EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_14"
-DISPLAY_TITLE = "Concern X Slice 3 — Reference Tag Canonicalization"
+EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_16"
+EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_15"
+DISPLAY_TITLE = "Concern X Slice 4 — Canonical Handover Section Contract"
 SOURCE_FILENAME = f"{EXPECTED_PREVIOUS_HANDOVER}.md"
 FAILED_FILENAME = f"{EXPECTED_HANDOVER_ID}_FAILED_CANDIDATE.md"
 DEFAULT_CONTEXT_CHARS = 6000
@@ -65,13 +66,13 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         source_path=CONTEXT_PATH,
         selectors=(
             SectionSelector(
-                "Reference Tags",
-                "canonical reference-tag syntax and prose-placement rules that Slice 3 must lock in code",
+                "Doc Class",
+                "canonical definition of a doc class and the section-contract semantics Slice 4 must encode",
                 render_mode="facts_and_verbatim",
             ),
             SectionSelector(
                 "No-LLM-Judge Constraint",
-                "deterministic validation constraint that also applies to reference-tag parsing",
+                "deterministic validation constraint that still governs section-contract validation",
             ),
         ),
     ),
@@ -80,17 +81,17 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         selectors=(
             SectionSelector(
                 "Resolved (Concern X)",
-                "accepted seam-discipline decisions that Slice 3 must honor",
+                "accepted seam-discipline decisions that Slice 4 must honor",
                 render_mode="facts_only",
             ),
             SectionSelector(
-                "Fresh Findings From Recent Phase Advances > 2. Future / external workspace paths need first-class semantics",
-                "the concrete failure mode that Slice 3 is meant to close",
+                "Fresh Findings From Recent Phase Advances > 6. Selective authoring exposed an implicit planning-doc schema",
+                "the concrete extractor failure mode that Slice 4 is meant to formalize",
                 render_mode="facts_and_verbatim",
             ),
             SectionSelector(
-                "I. Reference semantics should be declared, not inferred from prose",
-                "resolved reference-tag rationale and the decision to keep tags inline in markdown",
+                "J. Planning docs may need lightweight section contracts",
+                "resolved section-contract rationale and the decision to declare `canonical_handover` in the docs manifest",
                 render_mode="facts_and_verbatim",
             ),
         ),
@@ -100,22 +101,22 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         selectors=(
             SectionSelector("Overview", "overall slice framing"),
             SectionSelector(
-                "Slice 3 — Reference tag canonicalization",
+                "Slice 4 — Canonical-handover section contract",
                 "active slice scope, files, tests, and acceptance criteria",
                 render_mode="facts_and_verbatim",
             ),
         ),
     ),
     DocumentSelectionSpec(
-        source_path=REPO_ROOT / "docs/canonical/ALFRED_HANDOVER_14.md",
+        source_path=REPO_ROOT / "docs/canonical/ALFRED_HANDOVER_15.md",
         selectors=(
             SectionSelector(
                 "WHAT EXISTS TODAY > Key Design Decisions Inherited (Do Not Revisit)",
-                "slice 2 decisions that remain locked during slice 3",
+                "slice 3 decisions that remain locked during slice 4",
             ),
             SectionSelector(
                 "POST-MORTEM",
-                "ratified close-out and explicit forward plan to Slice 3",
+                "ratified close-out and explicit forward plan to Slice 4",
                 render_mode="facts_and_verbatim",
             ),
         ),
@@ -167,56 +168,65 @@ _DOC_PATH_OVERRIDES = {
 }
 
 SPRINT_GOAL = (
-    "Generate the canonical handover that plans Concern X Slice 3 of Alfred's "
-    "seam-discipline migration. Slice 2 is complete and ratified in "
-    "ALFRED_HANDOVER_14; this next handover must execute Slice 3 only: lock "
-    "reference-tag canonicalization. Concretely the handover must specify: "
-    "(a) a deterministic parser module in `src/alfred/refs/tags.py` that "
-    "recognizes exactly `[future-doc: <path>]` and `[future-path: <path>]`, "
-    "returns a typed `ReferenceTag`, and rejects malformed variants with "
-    "precise location-rich errors; (b) the validator refactor in "
-    "`scripts/validate_alfred_handover.py` so tag recognition flows through "
-    "that shared parser instead of ad-hoc inline regexes; (c) test coverage in "
-    "`tests/test_refs/test_tags.py` plus validator integration coverage for "
-    "canonical and pathological inputs; and (d) any narrow audit/normalization "
-    "edits needed so current handovers use the canonical tag spelling only. "
-    "The handover must make explicit that tags stay inline in markdown prose, "
-    "not in side-manifest metadata, and that no smart-model judgment belongs "
-    "in tag interpretation. Do not start Slice 4+ work such as canonical "
-    "section contracts, context bundles, renderer replacement, pre-flight "
-    "validators, post-generation validators, or failed-candidate filename "
-    "short-circuiting. This phase is reference-tag parser hardening only."
+    "Generate the canonical handover that plans Concern X Slice 4 of Alfred's "
+    "seam-discipline migration. Slice 3 is complete and ratified in "
+    "ALFRED_HANDOVER_15; this next handover must execute Slice 4 only: make "
+    "the `canonical_handover` section contract explicit and consume it in the "
+    "historical-context extractor. Concretely the handover must specify: "
+    "(a) a `doc_classes:` declaration in `docs/DOCS_MANIFEST.yaml` for "
+    "`canonical_handover`, including the required level-2 headings, the "
+    "semantic class of each heading, and the rendering treatment each heading "
+    "carries for deterministic extraction; (b) a loader in "
+    "`src/alfred/docs/contracts.py` plus a validator in "
+    "`src/alfred/docs/contract_validator.py`, with a package marker at "
+    "`src/alfred/docs/__init__.py`; (c) the generator refactor in "
+    "`scripts/generate_next_canonical_handover.py` so `_split_level2_sections` "
+    "and the historical-context extraction path read the heading list from the "
+    "declared `canonical_handover` contract instead of hardcoding it; and "
+    "(d) test coverage in `tests/test_docs/test_contracts.py`, "
+    "`tests/test_docs/test_contract_validator.py`, plus a regression proving "
+    "historical extraction is byte-identical for `ALFRED_HANDOVER_12` before "
+    "and after the refactor, and validator coverage that all existing "
+    "canonical handovers in the repo pass the declared `canonical_handover` "
+    "contract. The handover must make explicit that Slice 4 declares "
+    "`canonical_handover` only; other planning-doc classes remain uncontracted "
+    "in this slice. Do not start Slice 5+ work such as typed "
+    "context bundles, renderer replacement, pre-flight validators, "
+    "post-generation validators, or failed-candidate filename short-circuiting. "
+    "This phase is section-contract declaration plus extractor refactor only."
 )
 
 DEMO_PLAN_GROUNDING = (
     "Authoritative scope sources for this handover (structured facts and "
     "selected verbatim sections included below in the planner context):\n"
-    "- `CONTEXT.md` — canonical glossary entry for `Reference Tags` plus the "
-    "`No-LLM-Judge Constraint`; locks the exact `[future-doc:]` / "
-    "`[future-path:]` syntax and the rule that tags live in document prose.\n"
+    "- `CONTEXT.md` — canonical glossary entry for `Doc Class` plus the "
+    "`No-LLM-Judge Constraint`; locks what a section contract is and that only "
+    "deterministic validators may consume it.\n"
     "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X "
-    "design discussion; explains why future/external paths need first-class "
-    "semantics and why inline tags remain the canonical solution.\n"
+    "design discussion; explains why selective authoring exposed an implicit "
+    "planning-doc schema and why `canonical_handover` gets the first explicit "
+    "contract in `docs/DOCS_MANIFEST.yaml`.\n"
     "- `docs/active/POST_GRILL_1.md` — implementation plan for Concern X; "
-    "this handover plans Slice 3 only.\n"
-    "- `docs/canonical/ALFRED_HANDOVER_14.md` — previous ratified canonical "
-    "handover; confirms Slice 2 completion and explicitly names Slice 3 as the "
+    "this handover plans Slice 4 only.\n"
+    "- `docs/canonical/ALFRED_HANDOVER_15.md` — previous ratified canonical "
+    "handover; confirms Slice 3 completion and explicitly names Slice 4 as the "
     "next unit of work.\n"
     "Reference-doc rule for the generated canonical: cite every "
     "authoritative source doc that materially constrains the phase. Because "
     "this handover depends directly on `CONTEXT.md`, the workflow discussion, "
-    "the post-grill plan, and the Slice 2 close-out, cite those docs "
+    "the post-grill plan, and the Slice 3 close-out, cite those docs "
     "explicitly in "
     "`Reference Documents`.\n"
-    "Source-of-truth rule for Concern X Slice 3: reference tags stay as inline "
-    "typed annotations in markdown prose; the parser and validator must "
-    "deterministically interpret only the canonical bracket-and-prefix forms "
-    "declared in `CONTEXT.md`, with no side metadata channel and no LLM "
-    "judgment.\n"
+    "Source-of-truth rule for Concern X Slice 4: the `canonical_handover` "
+    "section contract is declared in `docs/DOCS_MANIFEST.yaml`, but the "
+    "semantic meaning of a doc class and its section contract comes from "
+    "`CONTEXT.md`. The generator's historical extractor must deterministically "
+    "consume the declared contract instead of hardcoding heading lists, with "
+    "no LLM judgment.\n"
     "Treat the contents of those docs as the source of truth for scope. "
-    "Do not invent deliverables outside Slice 3. Do not start any later "
-    "Concern X slice (section contract, context bundle, renderer, pre-flight "
-    "validators, post-generation validators, or failed-candidate filename "
+    "Do not invent deliverables outside Slice 4. Do not start any later "
+    "Concern X slice (context bundle, renderer, pre-flight validators, "
+    "post-generation validators, or failed-candidate filename "
     "short-circuit) in this handover. Do not reopen Phase 5 demo polish or add "
     "new runtime product scope."
 )
@@ -541,18 +551,18 @@ def load_demo_plan_context() -> AuthoringContextPacket:
         existing_specs,
         repo_root=REPO_ROOT,
         intro_lines=(
-            "===== AUTHORITATIVE CONCERN X SLICE 3 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
-            "Pass 1 indexed the authoritative docs by reference-tag syntax, no-LLM validation constraints, slice-level file/test targets, and ratified close-out guidance from Slice 2.",
-            "Pass 2 selected only the sections needed to author the Handover 15 canonical reference-tag brief and rendered structured facts plus verbatim source excerpts.",
+            "===== AUTHORITATIVE CONCERN X SLICE 4 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
+            "Pass 1 indexed the authoritative docs by doc-class semantics, no-LLM validation constraints, slice-level file/test targets, and ratified close-out guidance from Slice 3.",
+            "Pass 2 selected only the sections needed to author the Handover 16 canonical section-contract brief and rendered structured facts plus verbatim source excerpts.",
             "The source docs remain authoritative. The extracted packet is a deterministic view over those docs, not a replacement for them.",
             "",
             "===== AUTHORITATIVE SOURCE DOC MAP =====",
-            "- `CONTEXT.md` — canonical glossary for `Reference Tags` and the no-LLM validator rule.",
-            "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X rationale for reference tags staying inline in prose.",
-            "- `docs/active/POST_GRILL_1.md` — post-grill implementation plan with Slice 3 objective, files, tests, and acceptance criteria.",
-            "- `docs/canonical/ALFRED_HANDOVER_14.md` — ratified Slice 2 close-out and explicit forward plan to Slice 3.",
-            "Reference-doc expectation: the generated canonical should cite all four of those docs directly because they materially constrain this reference-tag phase.",
-            "Source-of-truth expectation: reference tags remain inline typed annotations in markdown prose; Slice 3 must lock the exact canonical forms without inventing manifest-side metadata.",
+            "- `CONTEXT.md` — canonical glossary for `Doc Class` and the no-LLM validator rule.",
+            "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X rationale for giving `canonical_handover` the first explicit section contract.",
+            "- `docs/active/POST_GRILL_1.md` — post-grill implementation plan with Slice 4 objective, files, tests, and acceptance criteria.",
+            "- `docs/canonical/ALFRED_HANDOVER_15.md` — ratified Slice 3 close-out and explicit forward plan to Slice 4.",
+            "Reference-doc expectation: the generated canonical should cite all four of those docs directly because they materially constrain this section-contract phase.",
+            "Source-of-truth expectation: Slice 4 declares `canonical_handover` in `docs/DOCS_MANIFEST.yaml` and migrates extractor logic onto that contract without inventing broader doc-class machinery.",
         ),
     )
 

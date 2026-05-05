@@ -180,18 +180,18 @@ def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:
     assert "src/alfred/tools/nonexistent_logging.py" in normalised
 
 
-def test_authoritative_scope_includes_context_reference_tags() -> None:
+def test_authoritative_scope_includes_context_doc_class() -> None:
     context_specs = [
         spec for spec in gnch.AUTHORITATIVE_SCOPE_SELECTION_SPECS if spec.source_path.name == "CONTEXT.md"
     ]
 
     assert len(context_specs) == 1
     assert any(
-        selector.path_suffix == "Reference Tags" for selector in context_specs[0].selectors
+        selector.path_suffix == "Doc Class" for selector in context_specs[0].selectors
     )
 
 
-def test_slice_three_grounding_mentions_canonical_reference_tags() -> None:
-    assert "[future-doc: <path>]" in gnch.SPRINT_GOAL
-    assert "[future-path: <path>]" in gnch.SPRINT_GOAL
+def test_slice_four_grounding_mentions_section_contract_manifest() -> None:
+    assert "docs/DOCS_MANIFEST.yaml" in gnch.SPRINT_GOAL
+    assert "canonical_handover" in gnch.SPRINT_GOAL
     assert "`CONTEXT.md`" in gnch.DEMO_PLAN_GROUNDING
