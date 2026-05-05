@@ -1,0 +1,53 @@
+# Phase Ledger for the blank-project kickoff demo.
+#
+# This file is a derived, additive scaffold — a mechanical view of canonical
+# handovers. Authority flows canonical handover -> phase ledger; the canonical
+# handover documents under docs/canonical/ remain the protocol surface.
+#
+# Slice 2 only: this file is not yet consumed by the generator. It is kept
+# alongside the existing workflow until Slice 6 turns the generator into a
+# renderer.
+
+project: blank_project_kickoff_demo
+plan_path: docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md
+
+phases:
+  - id: 0
+    title: Freeze The Scenario
+    status: ratified
+    handover_id: ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO
+    scope_sources:
+      - docs/archive/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PHASE_0_FROZEN_SCENARIO.md
+
+  - id: 1
+    title: Define The Canonical Kickoff Handover Shape
+    status: ratified
+    handover_id: ALFRED_HANDOVER_8
+    scope_sources:
+      - docs/active/CUSTOMER_ONBOARDING_PORTAL_CHARTER.md
+      - docs/active/DEMO_PROJECT_LAYOUT.md
+      - docs/active/KICKOFF_HANDOVER_OUTLINE.md
+
+  - id: 2
+    title: Close The Execution Path Around The Orchestrator
+    status: ratified
+    handover_id: ALFRED_HANDOVER_9
+    scope_carry_forward: [0, 1]
+
+  - id: 3
+    title: Carry Proposed Stories As First-Class Runtime State
+    status: ratified
+    handover_id: ALFRED_HANDOVER_10
+    scope_carry_forward: [0, 1, 2]
+
+  - id: 4
+    title: Close The HITL Gate Into GitHub Board Writes
+    status: ratified
+    handover_id: ALFRED_HANDOVER_11
+    scope_carry_forward: [0, 1, 2, 3]
+
+  - id: 5
+    title: Rehearsal, Instrumentation, And Demo Script
+    status: ratified
+    handover_id: ALFRED_HANDOVER_12
+    scope_carry_forward: [0, 1, 2, 3, 4]
