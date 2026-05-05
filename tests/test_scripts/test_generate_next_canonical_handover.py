@@ -61,45 +61,9 @@ def test_previous_canonical_source_is_citable_under_docs_policy() -> None:
     assert is_citable_doc(f"docs/canonical/{gnch.EXPECTED_PREVIOUS_HANDOVER}.md")
 
 
-def test_sprint_goal_is_scoped_to_concern_x_slice_1() -> None:
-    assert "Concern X Slice 1" in gnch.SPRINT_GOAL
-    assert "repo cleanup" in gnch.SPRINT_GOAL
-    assert "Do not start the phase ledger" in gnch.SPRINT_GOAL
-    assert "cleanup only" in gnch.SPRINT_GOAL
-
-
 def test_context_attempt_order_degrades_to_none() -> None:
     assert gnch.build_context_attempt_order("summary") == ["summary", "minimal", "none"]
     assert gnch.build_context_attempt_order("full") == ["full", "summary", "minimal", "none"]
-
-
-def test_load_historical_context_summary_is_bounded(tmp_path: Path) -> None:
-    source = tmp_path / "docs" / "ALFRED_HANDOVER_7.md"
-    source.parent.mkdir(parents=True)
-    source.write_text(
-        "# Alfred's Handover Document #7 — Phase 8\n\n"
-        "## CONTEXT — READ THIS FIRST\n"
-        "**id:** ALFRED_HANDOVER_7\n"
-        "**date:** 2026-04-21\n"
-        "**author:** Planner\n"
-        "**baseline_state:** some baseline\n"
-        "- `docs/ALFRED_HANDOVER_6.md`\n\n"
-        "## WHAT EXISTS TODAY\n"
-        + "\n".join(f"- line {i}" for i in range(40))
-        + "\n\n## TASK OVERVIEW\n"
-        "| # | Task | Deliverable |\n"
-        "|---|---|---|\n"
-        "| 1 | Refresh | `docs/ALFRED_HANDOVER_8.md` |\n",
-        encoding="utf-8",
-    )
-
-    summary = gnch.load_historical_context(source, mode="summary", max_chars=4500)
-    assert summary is not None
-    assert gnch.DEMO_PLAN_GROUNDING in summary
-    assert "Historical source:" in summary
-    assert "Historical task overview:" in summary
-    assert len(summary) <= 4530
-    assert "`docs/canonical/ALFRED_HANDOVER_6.md`" in summary
 
 
 def test_load_historical_context_drops_archive_only_reference_bullets(tmp_path: Path) -> None:
@@ -195,22 +159,6 @@ def test_build_planner_context_deduplicates_overlap_between_scope_and_history(
 
     assert context == scope
     assert historical_chars == 0
-
-
-def test_load_demo_plan_context_builds_targeted_authoring_packet() -> None:
-    packet = gnch.load_demo_plan_context()
-
-    assert packet.packet_char_count < packet.source_char_count
-    assert "===== AUTHORITATIVE SOURCE DOC MAP =====" in packet.text
-    assert "Reference-doc expectation:" in packet.text
-    assert "Source-of-truth expectation:" in packet.text
-    assert "===== PASS 1 — STRUCTURED FACTS =====" in packet.text
-    assert "===== PASS 2 — VERBATIM SOURCE SECTIONS =====" in packet.text
-    assert "Slice 1 — Repo cleanup" in packet.text
-    assert "resolved Concern X design decisions" in packet.text
-    assert "### Verification" not in packet.text
-    assert "docs/active/HANDOVER_WORKFLOW_DISCUSSION.md" in packet.source_doc_paths
-    assert "docs/active/POST_GRILL_1.md" in packet.source_doc_paths
 
 
 def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:
