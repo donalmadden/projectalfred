@@ -87,7 +87,7 @@ f65a427  ready for demo
 
 Out of scope:
 - Any renderer work (Slice 6) or generator changes.
-- Any doc-class section-contract work (Slice 3) or reference-tag parser changes.
+- Any reference-tag parser changes (Slice 3) or doc-class section-contract work (Slice 4).
 - Any preflight/postgen validator introduction (Slices 7–8).
 - Any automation that “extracts” the brief from existing docs.
 
@@ -219,14 +219,14 @@ pyright
 - Choosing the right level for status validation. `Literal["ratified", "planning"]` was preferred over a real `Enum` because the ledger is YAML-first and Pydantic surfaces clearer errors against a `Literal` for hand-edited files.
 
 **Decisions made during execution (deviations from this plan):**
-- *Renamed `Brief.follow_ups` → `Brief.followups_from_prior_phase`* to match `CONTEXT.md` as the resolved glossary. Also added an optional `plan_path: str | None` to `PhaseLedger` to match the YAML sketch shape. Committed as `914268c`. Approved by: planner clarification recorded in this same handover (HARD RULES item 3 was amended in the same commit window to make `CONTEXT.md` authoritative on field names; uncommitted edits to `ALFRED_HANDOVER_14.md` reflect this).
+- *Renamed `Brief.follow_ups` → `Brief.followups_from_prior_phase`* to match `CONTEXT.md` as the resolved glossary. Also added an optional `plan_path: str | None` to `PhaseLedger` to match the YAML sketch shape. Committed as `914268c`. Approved by: planner clarification recorded in this same handover (HARD RULES item 3 was amended in the same commit window to make `CONTEXT.md` authoritative on field names; this document now carries that clarification directly).
 - *Added `LedgerLoadError`* as a thin wrapper around YAML, type, and Pydantic validation failures so errors carry the originating file path. Not explicitly required by the plan but consistent with "precise errors" in the deliverable list. Approved by: executor judgment, scope-preserving (no new dependency, no behavior change to the generator).
 - *Added a `TaskSeed` Pydantic model* for the items in `Brief.tasks` rather than a free-form `list[dict]`. This is stricter than the plan's "list of task seeds" wording but keeps validation deterministic and was needed to make `id`/`title`/`intent` enforceable. Approved by: executor judgment.
 - *Skipped CHECKPOINT-1's "STOP HERE" gate* and proceeded to Task 2. The checkpoint was satisfied verbally rather than recorded in the document; this is a process gap to flag, not a scope deviation. Approved by: human (Donal), out-of-band.
 
 **Forward plan:**
-- Commit the in-flight edits to `ALFRED_HANDOVER_14.md` (HARD RULES item 3 clarification, deliverables note about reading the YAML sketch, and this post-mortem) so the handover is self-consistent before HANDOVER_15 is drafted.
-- HANDOVER_15 should pick up Slice 3 (doc-class section contracts) per the Slice 2 → Slice 6 trajectory in `docs/active/POST_GRILL_1.md`. The ledger remains additive until Slice 6 turns the generator into a renderer; do not wire `load_ledger` into the generator before then.
+- `ALFRED_HANDOVER_14.md` now includes the field-name precedence clarification, the seed-file note about reading the illustrative YAML sketch, and this post-mortem. Keep those clarifications inherited as stable context when drafting HANDOVER_15.
+- HANDOVER_15 should pick up Slice 3 (reference tag canonicalization) per `docs/active/POST_GRILL_1.md`. Slice 4 is the doc-class section-contract slice. The ledger remains additive until Slice 6 turns the generator into a renderer; do not wire `load_ledger` into the generator before then.
 - When Slice 6 lands, the seed `docs/active/PHASE_LEDGER.yaml` will need a `planning`-status row with a populated `Brief` to exercise the renderer path; today every phase in the seed is `ratified`, so the brief-on-planning code path is only covered by unit tests, not by the live fixture.
 - Consider tightening `PhaseLedger` later with a cross-phase invariant that every `id` in `scope_carry_forward` refers to an existing earlier phase. Deliberately deferred from Slice 2 to avoid scope creep, but it is the natural next validation rule once the renderer needs it.
 

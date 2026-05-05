@@ -96,7 +96,7 @@ def test_validate_required_citable_docs_reports_policy_gaps(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_13.md"
+    source = tmp_path / "docs" / "canonical" / f"{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
     source.parent.mkdir(parents=True)
     source.write_text("# x\n", encoding="utf-8")
 
@@ -112,14 +112,14 @@ def test_validate_required_citable_docs_reports_policy_gaps(
     )
 
     assert gnch.validate_required_citable_docs(source) == [
-        "docs/canonical/ALFRED_HANDOVER_13.md"
+        f"docs/canonical/{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
     ]
 
 
 def test_load_historical_context_skips_when_source_already_in_authoritative_scope(
     tmp_path: Path,
 ) -> None:
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_13.md"
+    source = tmp_path / "docs" / "canonical" / f"{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
     source.parent.mkdir(parents=True)
     source.write_text("# x\n", encoding="utf-8")
     source_key = gnch._repo_relative_doc_path(source)
@@ -138,20 +138,20 @@ def test_build_planner_context_deduplicates_overlap_between_scope_and_history(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
-    source = tmp_path / "docs" / "canonical" / "ALFRED_HANDOVER_13.md"
+    source = tmp_path / "docs" / "canonical" / f"{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
     source.parent.mkdir(parents=True)
     source.write_text(
         "# Alfred's Handover Document #11\n\n"
         "## TASK OVERVIEW\n"
         "| # | Task | Deliverable |\n"
         "|---|---|---|\n"
-        "| 1 | Keep | `docs/canonical/ALFRED_HANDOVER_14.md` |\n",
+        f"| 1 | Keep | `docs/canonical/{gnch.EXPECTED_HANDOVER_ID}.md` |\n",
         encoding="utf-8",
     )
 
     scope = (
         "AUTHORITATIVE\n"
-        "----- BEGIN docs/canonical/ALFRED_HANDOVER_13.md -----\n"
+        f"----- BEGIN docs/canonical/{gnch.EXPECTED_PREVIOUS_HANDOVER}.md -----\n"
         "body"
     )
 
@@ -178,3 +178,20 @@ def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:
     assert "`docs/archive/ALFRED_HANDOVER_8_FAILED_CANDIDATE.md`" not in normalised
     assert "`src/alfred/tools/nonexistent_logging.py`" not in normalised
     assert "src/alfred/tools/nonexistent_logging.py" in normalised
+
+
+def test_authoritative_scope_includes_context_reference_tags() -> None:
+    context_specs = [
+        spec for spec in gnch.AUTHORITATIVE_SCOPE_SELECTION_SPECS if spec.source_path.name == "CONTEXT.md"
+    ]
+
+    assert len(context_specs) == 1
+    assert any(
+        selector.path_suffix == "Reference Tags" for selector in context_specs[0].selectors
+    )
+
+
+def test_slice_three_grounding_mentions_canonical_reference_tags() -> None:
+    assert "[future-doc: <path>]" in gnch.SPRINT_GOAL
+    assert "[future-path: <path>]" in gnch.SPRINT_GOAL
+    assert "`CONTEXT.md`" in gnch.DEMO_PLAN_GROUNDING

@@ -155,6 +155,14 @@ documents:
     authoritative: true
     notes: Canonical handover for Concern X Slice 2 — phase ledger schema and seed file.
 
+  - current_path: docs/canonical/ALFRED_HANDOVER_15.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover for Concern X Slice 3 — reference tag canonicalization.
+
   - current_path: docs/protocol/architecture.md
     kind: protocol_doc
     lifecycle_status: protocol
@@ -412,6 +420,14 @@ documents:
     citable: true
     authoritative: true
     notes: Authoritative inventory of the docs corpus consumed by policy-aware tooling.
+
+  - current_path: CONTEXT.md
+    kind: governance_doc
+    lifecycle_status: governance
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical glossary for ProjectAlfred domain terms, methodology language, and seam-discipline contracts.
 
   - current_path: docs/agents/domain.md
     kind: agent_guide
