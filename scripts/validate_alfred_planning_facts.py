@@ -33,6 +33,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from alfred.refs.tags import scan_reference_tags  # noqa: E402
 from alfred.schemas.claim_types import ClaimCategory  # noqa: E402
 from alfred.schemas.repo_conventions import PartialStateFact, PartialStateType  # noqa: E402
 from alfred.schemas.validator_findings import (  # noqa: E402
@@ -49,9 +50,9 @@ from alfred.schemas.validator_findings import (  # noqa: E402
     ToolingFinding,
     TopologyFinding,
 )
-from alfred.refs.tags import scan_reference_tags  # noqa: E402
 from alfred.tools.docs_policy import read_docs_inventory  # noqa: E402
 from alfred.tools.reference_doc_validator import (  # noqa: E402
+    link_is_illustrative_placeholder,
     link_is_inventory_exempt,
     path_has_future_tag,
     validate_reference_doc_cross_links,
@@ -505,6 +506,8 @@ def _check_reference_documents(
         if path in seen:
             continue
         seen.add(path)
+        if link_is_illustrative_placeholder(path):
+            continue
         if link_is_inventory_exempt(text, match.start(), match.end()):
             continue
         if path not in citable_inventory:

@@ -90,6 +90,16 @@ def _normalise_doc_link_path(doc_path: str, repo_root: Optional[Path]) -> str:
     return doc_path
 
 
+def link_is_illustrative_placeholder(doc_path: str) -> bool:
+    """Return whether ``doc_path`` is an example placeholder, not a real link.
+
+    We sometimes describe inventory semantics with illustrative tokens such as
+    ``docs/...md`` in handover prose. Those should not be validated as real
+    repo docs.
+    """
+    return "..." in Path(doc_path).name
+
+
 def _find_sentence(text: str, pos: int) -> str:
     """Return the sentence containing ``pos`` for nearby intent checks."""
     sent_start = 0
@@ -275,6 +285,8 @@ def validate_reference_doc_cross_links(
         if link in seen:
             continue
         seen.add(link)
+        if link_is_illustrative_placeholder(link):
+            continue
         normalised_link = _normalise_doc_link_path(link, repo_root)
         if link in inventory or normalised_link in inventory:
             continue

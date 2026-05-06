@@ -29,6 +29,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import yaml
 
+from alfred.docs.contract_validator import split_markdown_by_contract
+from alfred.docs.contracts import DocContract, get_doc_class_contract
 from alfred.schemas.config import AlfredConfig
 from alfred.tools.docs_policy import (
     is_citable_doc,
@@ -317,24 +319,12 @@ def _extract_title(text: str) -> str:
     return "Historical handover"
 
 
+def _canonical_handover_contract() -> DocContract:
+    return get_doc_class_contract("canonical_handover", repo_root=REPO_ROOT)
+
+
 def _split_level2_sections(markdown: str) -> dict[str, str]:
-    sections: dict[str, list[str]] = {}
-    current_key: Optional[str] = None
-    in_fence = False
-    for line in markdown.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            in_fence = not in_fence
-            if current_key is not None:
-                sections[current_key].append(line)
-            continue
-        if not in_fence and line.startswith("## "):
-            current_key = line[3:].strip().lower()
-            sections[current_key] = []
-            continue
-        if current_key is not None:
-            sections[current_key].append(line)
-    return {key: "\n".join(value).strip() for key, value in sections.items()}
+    return split_markdown_by_contract(markdown, _canonical_handover_contract())
 
 
 def _extract_metadata_lines(text: str) -> list[str]:
@@ -619,12 +609,10 @@ def load_historical_context(
     sections = _split_level2_sections(text)
     title = _extract_title(text)
     metadata = _extract_metadata_lines(text)
-    context_body = sections.get("context — read this first", "")
-    what_exists = sections.get("what exists today", "")
-    produces = sections.get("what this phase produces", "") or sections.get(
-        "what this handover produces", ""
-    )
-    task_overview = sections.get("task overview", "")
+    context_body = sections.get("context", "")
+    what_exists = sections.get("current_state", "")
+    produces = sections.get("deliverables", "")
+    task_overview = sections.get("task_overview", "")
 
     parts: list[str] = [
         "Use this previous canonical handover for continuity only. Treat repo facts, "

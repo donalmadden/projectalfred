@@ -4,6 +4,61 @@ notes:
   - "This manifest reflects the current docs corpus after the lifecycle-directory move."
   - "current_path is the authoritative on-disk location used by policy-aware tooling."
 
+# `doc_classes` captures only the document classes that deterministic tooling
+# must consume today. Slice 4 scope is intentionally narrow: canonical handovers
+# only. Other planning docs remain convention-based until a deterministic reader
+# needs them.
+doc_classes:
+  canonical_handover:
+    description: Core level-2 section contract for canonical Alfred handovers.
+    allow_unexpected_headings: true
+    sections:
+      - key: context
+        required: true
+        headings:
+          - "CONTEXT — READ THIS FIRST"
+        semantic_class: continuity
+        rendering_treatment: extractable
+      - key: current_state
+        required: true
+        headings:
+          - "WHAT EXISTS TODAY"
+        semantic_class: current_state
+        rendering_treatment: extractable
+      - key: hard_rules
+        required: true
+        headings:
+          - "HARD RULES"
+        semantic_class: protocol_invariant
+        rendering_treatment: extractable
+      - key: deliverables
+        required: true
+        headings:
+          - "WHAT THIS PHASE PRODUCES"
+          - "WHAT THIS HANDOVER PRODUCES"
+          - "WHAT PHASE 2 PRODUCES"
+        semantic_class: deliverables
+        rendering_treatment: extractable
+      - key: task_overview
+        required: true
+        headings:
+          - "TASK OVERVIEW"
+        semantic_class: task_index
+        rendering_treatment: extractable
+      - key: non_goals
+        required: true
+        headings:
+          - "WHAT NOT TO DO"
+        semantic_class: non_goals
+        rendering_treatment: extractable
+      - key: retrospective
+        required: false
+        headings:
+          - "POST-MORTEM"
+          - "POST-MORTEM (Phase 2)"
+        semantic_class: retrospective
+        rendering_treatment: verbatim
+
 folders:
   canonical:
     path: docs/canonical

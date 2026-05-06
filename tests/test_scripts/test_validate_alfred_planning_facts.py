@@ -512,6 +512,15 @@ def test_explicit_future_path_tag_skips_current_path_check() -> None:
     assert not path_findings, "Explicit future-path tag must suppress path existence lookup"
 
 
+def test_illustrative_placeholder_doc_path_is_not_flagged() -> None:
+    md = _wrap_current_state(
+        "Illustrative placeholder `docs/...md` should not be treated as a real doc."
+    )
+    findings = validate_current_state_facts(md)
+    ref_findings = [f for f in findings if f.category == ClaimCategory.REFERENCE_DOC]
+    assert not ref_findings, "Illustrative placeholder paths must be ignored"
+
+
 # ---------------------------------------------------------------------------
 # Reference-tag syntax (Slice 3 — shared parser integration)
 # ---------------------------------------------------------------------------
@@ -538,7 +547,6 @@ def test_malformed_tag_does_not_exempt_path_check() -> None:
         "Module `docs/MISSING_FILE.md` [future-doc bad-form] is here."
     )
     findings = validate_current_state_facts(md)
-    path_findings = [f for f in findings if f.category == ClaimCategory.CURRENT_PATH]
     # The malformed tag must not cause the path to be silently exempt: at
     # minimum, the malformed-tag finding fires; the docs/...md cross-link
     # check or the path check may also fire, but we only assert the tag

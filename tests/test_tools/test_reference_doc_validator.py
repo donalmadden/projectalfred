@@ -6,6 +6,7 @@ from pathlib import Path
 from alfred.tools.docs_policy import read_docs_inventory
 from alfred.tools.reference_doc_validator import (
     extract_reference_doc_metadata,
+    link_is_illustrative_placeholder,
     validate_reference_doc_cross_links,
     validate_reference_doc_freshness,
     validate_reference_doc_structure,
@@ -129,6 +130,24 @@ def test_explicit_future_doc_tag_skips_cross_link_inventory_check(tmp_path: Path
     )
 
     assert issues == []
+
+
+def test_illustrative_placeholder_doc_path_is_not_treated_as_cross_link(tmp_path: Path) -> None:
+    doc = tmp_path / "docs" / "protocol" / "architecture.md"
+    _write(
+        doc,
+        "# Architecture\n\n"
+        "Example placeholder `docs/...md` should not be treated as a real doc.\n",
+    )
+
+    issues = validate_reference_doc_cross_links(
+        "docs/protocol/architecture.md",
+        {"docs/protocol/architecture.md"},
+        tmp_path,
+    )
+
+    assert issues == []
+    assert link_is_illustrative_placeholder("docs/...md") is True
 
 
 def test_handover_workflow_discussion_doc_has_no_broken_cross_links() -> None:

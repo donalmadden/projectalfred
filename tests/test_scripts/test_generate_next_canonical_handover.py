@@ -195,3 +195,96 @@ def test_slice_four_grounding_mentions_section_contract_manifest() -> None:
     assert "docs/DOCS_MANIFEST.yaml" in gnch.SPRINT_GOAL
     assert "canonical_handover" in gnch.SPRINT_GOAL
     assert "`CONTEXT.md`" in gnch.DEMO_PLAN_GROUNDING
+
+
+def _legacy_split_level2_sections(markdown: str) -> dict[str, str]:
+    sections: dict[str, list[str]] = {}
+    current_key = None
+    in_fence = False
+
+    for line in markdown.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            if current_key is not None:
+                sections[current_key].append(line)
+            continue
+        if not in_fence and line.startswith("## "):
+            current_key = line[3:].strip().lower()
+            sections[current_key] = []
+            continue
+        if current_key is not None:
+            sections[current_key].append(line)
+
+    return {key: "\n".join(value).strip() for key, value in sections.items()}
+
+
+def _legacy_summary_context(source_path: Path, *, max_chars: int) -> str:
+    text = source_path.read_text(encoding="utf-8")
+    sections = _legacy_split_level2_sections(text)
+    title = gnch._extract_title(text)
+    metadata = gnch._extract_metadata_lines(text)
+    context_body = sections.get("context — read this first", "")
+    what_exists = sections.get("what exists today", "")
+    produces = sections.get("what this phase produces", "") or sections.get(
+        "what this handover produces", ""
+    )
+    task_overview = sections.get("task overview", "")
+
+    parts: list[str] = [
+        "Use this previous canonical handover for continuity only. Treat repo facts, "
+        "validator findings, reference-doc checks, and current git history as more "
+        "authoritative than any stale content from the earlier phase handover.",
+        gnch.DEMO_PLAN_GROUNDING,
+        "Historical source: previous canonical handover (continuity only).",
+        f"Historical title: {title}",
+    ]
+    if metadata:
+        parts.append("Historical metadata:")
+        parts.extend(metadata[:5])
+
+    ref_docs = gnch._normalise_reference_bullets(
+        gnch._extract_bullets(context_body, max_items=4)
+    )
+    if ref_docs:
+        parts.append("Historical reference documents:")
+        parts.extend(ref_docs)
+
+    task_rows = [
+        gnch._normalise_historical_text(line)
+        for line in gnch._extract_table_rows(task_overview, max_rows=8)
+    ]
+    if task_rows:
+        parts.append("Historical task overview:")
+        parts.extend(task_rows)
+
+    current_lines = [
+        gnch._normalise_historical_text(line)
+        for line in gnch._extract_signal_lines(what_exists, max_lines=10)
+    ]
+    if current_lines:
+        parts.append("Historical WHAT EXISTS TODAY snapshot (may be stale):")
+        parts.extend(current_lines)
+
+    produces_lines = [
+        gnch._normalise_historical_text(line)
+        for line in gnch._extract_bullets(produces, max_items=8)
+    ]
+    if produces_lines:
+        parts.append("Historical planned deliverables:")
+        parts.extend(produces_lines)
+
+    return gnch._truncate_context("\n".join(parts), max_chars=max_chars)
+
+
+def test_load_historical_context_summary_is_byte_identical_for_handover_12() -> None:
+    source = ROOT / "docs" / "canonical" / "ALFRED_HANDOVER_12.md"
+
+    expected = _legacy_summary_context(source, max_chars=gnch.DEFAULT_CONTEXT_CHARS)
+    actual = gnch.load_historical_context(
+        source,
+        mode="summary",
+        max_chars=gnch.DEFAULT_CONTEXT_CHARS,
+    )
+
+    assert actual == expected
