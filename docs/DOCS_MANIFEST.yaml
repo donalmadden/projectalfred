@@ -226,6 +226,14 @@ documents:
     authoritative: true
     notes: Canonical handover for Concern X Slice 4 — canonical handover section contract.
 
+  - current_path: docs/canonical/ALFRED_HANDOVER_17.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover for Concern X Slice 5 — three-role typed context bundle.
+
   - current_path: docs/protocol/architecture.md
     kind: protocol_doc
     lifecycle_status: protocol

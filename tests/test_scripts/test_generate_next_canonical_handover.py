@@ -268,12 +268,18 @@ def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:
     assert "src/alfred/tools/nonexistent_logging.py" in normalised
 
 
-def test_authoritative_scope_includes_context_roles_and_doc_class() -> None:
+def test_authoritative_scope_includes_phase_ledger_brief_and_context_roles() -> None:
     context_specs = [
         spec for spec in gnch.AUTHORITATIVE_SCOPE_SELECTION_SPECS if spec.source_path.name == "CONTEXT.md"
     ]
 
     assert len(context_specs) == 1
+    assert any(
+        selector.path_suffix == "Phase Ledger" for selector in context_specs[0].selectors
+    )
+    assert any(
+        selector.path_suffix == "Brief" for selector in context_specs[0].selectors
+    )
     assert any(
         selector.path_suffix == "Context Roles" for selector in context_specs[0].selectors
     )
@@ -282,11 +288,13 @@ def test_authoritative_scope_includes_context_roles_and_doc_class() -> None:
     )
 
 
-def test_slice_five_grounding_mentions_context_bundle_roles() -> None:
-    assert "ContextBundle" in gnch.SPRINT_GOAL
-    assert "carry_forward" in gnch.SPRINT_GOAL
-    assert "continuity" in gnch.SPRINT_GOAL
+def test_slice_six_grounding_mentions_phase_ledger_brief_and_renderer() -> None:
+    assert "PhaseLedger" in gnch.SPRINT_GOAL
+    assert "Brief" in gnch.SPRINT_GOAL
+    assert "renderer" in gnch.SPRINT_GOAL
+    assert "tests/test_render/test_handover_inputs.py" in gnch.SPRINT_GOAL
     assert "`CONTEXT.md`" in gnch.DEMO_PLAN_GROUNDING
+    assert "`docs/active/PHASE_LEDGER.yaml`" in gnch.DEMO_PLAN_GROUNDING
 
 
 def _legacy_split_level2_sections(markdown: str) -> dict[str, str]:
