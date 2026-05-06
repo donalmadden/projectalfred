@@ -161,6 +161,93 @@ def test_build_planner_context_deduplicates_overlap_between_scope_and_history(
     assert historical_chars == 0
 
 
+def test_build_planner_context_routes_through_context_bundle_render(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Generator must use ``ContextBundle.render()`` as the assembly mechanism."""
+    monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
+    source = tmp_path / "docs" / "canonical" / f"{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "# Alfred's Handover Document #11\n\n"
+        "## CONTEXT — READ THIS FIRST\n"
+        "Continuity body line.\n",
+        encoding="utf-8",
+    )
+
+    render_calls: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
+    original_render = gnch.ContextBundle.render
+
+    def spy_render(self, *, summarizer):  # type: ignore[no-untyped-def]
+        render_calls.append(
+            (
+                tuple(item.role for item in self.items),
+                tuple(item.path for item in self.items),
+            )
+        )
+        return original_render(self, summarizer=summarizer)
+
+    monkeypatch.setattr(gnch.ContextBundle, "render", spy_render)
+    monkeypatch.setattr(
+        gnch,
+        "_render_historical_continuity",
+        lambda text, *, mode, max_chars=gnch.DEFAULT_CONTEXT_CHARS: "HIST_BLOCK",
+    )
+
+    scope = "SCOPE_PACKET"
+    context, historical_chars = gnch.build_planner_context(scope, source, mode="summary")
+
+    assert len(render_calls) == 1
+    roles, paths = render_calls[0]
+    assert "scope" in roles
+    assert "continuity" in roles
+    source_rel = gnch._repo_relative_doc_path(source)
+    assert source_rel in paths
+
+    # Output is the concatenation of bundle-rendered blocks, in role order.
+    assert context == "SCOPE_PACKET\n\nHIST_BLOCK"
+    assert historical_chars == len("HIST_BLOCK")
+
+
+def test_build_planner_context_skips_continuity_when_dedup_drops_it(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """When source path collides with a scope source path, the continuity
+    rendering must be omitted — no scope-packet duplication leaks through."""
+    monkeypatch.setattr(gnch, "REPO_ROOT", tmp_path)
+    source = tmp_path / "docs" / "canonical" / f"{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("# x\n## CONTEXT — READ THIS FIRST\nbody\n", encoding="utf-8")
+    source_rel = gnch._repo_relative_doc_path(source)
+
+    summarizer_calls: list[str] = []
+
+    def fake_summary(text, *, mode, max_chars=gnch.DEFAULT_CONTEXT_CHARS):
+        summarizer_calls.append(mode)
+        return "SHOULD_NOT_APPEAR"
+
+    monkeypatch.setattr(gnch, "_render_historical_continuity", fake_summary)
+
+    scope_packet = gnch.AuthoringContextPacket(
+        text="SCOPE_BODY",
+        source_doc_paths=(source_rel,),
+        selected_sections=(),
+        facts=(),
+        source_char_count=10,
+        packet_char_count=10,
+    )
+
+    context, historical_chars = gnch.build_planner_context(
+        scope_packet, source, mode="summary"
+    )
+
+    assert context == "SCOPE_BODY"
+    assert historical_chars == 0
+    assert summarizer_calls == []  # continuity was dropped before rendering
+
+
 def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:
     markdown = (
         "## CONTEXT — READ THIS FIRST\n"
@@ -180,20 +267,24 @@ def test_normalise_generated_markdown_rewrites_and_filters_doc_refs() -> None:
     assert "src/alfred/tools/nonexistent_logging.py" in normalised
 
 
-def test_authoritative_scope_includes_context_doc_class() -> None:
+def test_authoritative_scope_includes_context_roles_and_doc_class() -> None:
     context_specs = [
         spec for spec in gnch.AUTHORITATIVE_SCOPE_SELECTION_SPECS if spec.source_path.name == "CONTEXT.md"
     ]
 
     assert len(context_specs) == 1
     assert any(
+        selector.path_suffix == "Context Roles" for selector in context_specs[0].selectors
+    )
+    assert any(
         selector.path_suffix == "Doc Class" for selector in context_specs[0].selectors
     )
 
 
-def test_slice_four_grounding_mentions_section_contract_manifest() -> None:
-    assert "docs/DOCS_MANIFEST.yaml" in gnch.SPRINT_GOAL
-    assert "canonical_handover" in gnch.SPRINT_GOAL
+def test_slice_five_grounding_mentions_context_bundle_roles() -> None:
+    assert "ContextBundle" in gnch.SPRINT_GOAL
+    assert "carry_forward" in gnch.SPRINT_GOAL
+    assert "continuity" in gnch.SPRINT_GOAL
     assert "`CONTEXT.md`" in gnch.DEMO_PLAN_GROUNDING
 
 

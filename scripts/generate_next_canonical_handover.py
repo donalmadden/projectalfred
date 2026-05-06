@@ -578,21 +578,22 @@ def validate_required_citable_docs(source_path: Path) -> list[str]:
     return missing
 
 
-def load_historical_context(
-    source_path: Path,
+def _render_historical_continuity(
+    text: str,
     *,
-    mode: str = "summary",
+    mode: str,
     max_chars: int = DEFAULT_CONTEXT_CHARS,
-    excluded_doc_paths: tuple[str, ...] = (),
 ) -> Optional[str]:
-    """Load a bounded historical context block for the planner."""
-    if not source_path.is_file():
-        return None
+    """Render the deterministic historical continuity block from raw markdown.
+
+    Used both by :func:`load_historical_context` (file-reading wrapper kept for
+    callers that take a ``Path``) and by the bundle summarizer in
+    :func:`build_planner_context`. Section identity comes from the Slice 4
+    ``canonical_handover`` contract via :func:`_split_level2_sections` — no
+    heading strings are hardcoded here.
+    """
     if mode == "none":
         return None
-    if _repo_relative_doc_path(source_path) in set(excluded_doc_paths):
-        return None
-    text = source_path.read_text(encoding="utf-8")
     if mode == "full":
         return (
             "Update the next canonical handover so it matches the live repository "
@@ -668,6 +669,24 @@ def load_historical_context(
     return _truncate_context("\n".join(parts), max_chars=max_chars)
 
 
+def load_historical_context(
+    source_path: Path,
+    *,
+    mode: str = "summary",
+    max_chars: int = DEFAULT_CONTEXT_CHARS,
+    excluded_doc_paths: tuple[str, ...] = (),
+) -> Optional[str]:
+    """Load a bounded historical context block for the planner."""
+    if not source_path.is_file():
+        return None
+    if mode == "none":
+        return None
+    if _repo_relative_doc_path(source_path) in set(excluded_doc_paths):
+        return None
+    text = source_path.read_text(encoding="utf-8")
+    return _render_historical_continuity(text, mode=mode, max_chars=max_chars)
+
+
 def build_context_attempt_order(requested_mode: str) -> list[str]:
     """Return ordered context modes for planner fallback attempts."""
     orders = {
@@ -679,6 +698,9 @@ def build_context_attempt_order(requested_mode: str) -> list[str]:
     return orders[requested_mode]
 
 
+_SCOPE_PACKET_PATH = "<scope-packet>"
+
+
 def build_planner_context(
     authoritative_scope: AuthoringContextPacket | str,
     source_path: Path,
@@ -688,10 +710,18 @@ def build_planner_context(
 ) -> tuple[Optional[str], int]:
     """Assemble planner context via a typed three-role :class:`ContextBundle`.
 
-    Dedup precedence (`scope` > `carry_forward` > `continuity`) is delegated to
-    the bundle: when the historical handover's path also appears among the
-    authoritative-scope packet's source docs, the continuity item is dropped
-    deterministically — preserving the Phase 3 duplicate-context fix.
+    The bundle is the assembly mechanism — not just a dedup check. Each
+    authoritative-scope source path is registered as a ``scope`` item, the
+    pre-rendered scope packet flows through one synthetic-path ``scope`` item,
+    and the previous canonical handover is registered as a ``continuity`` item
+    carrying the raw source markdown. ``ContextBundle.render()`` then applies
+    role-specific rendering and dedup precedence — when the source handover's
+    path collides with a scope source, the continuity item is dropped
+    deterministically (preserving the Phase 3 duplicate-context fix).
+
+    The ``continuity`` summarizer is supplied as a closure so the existing
+    ``--historical-context-mode`` degradation path (full/summary/minimal) is
+    preserved without reintroducing hardcoded heading strings.
     """
     if isinstance(authoritative_scope, str):
         scope_text = authoritative_scope
@@ -705,39 +735,46 @@ def build_planner_context(
 
     source_rel = _repo_relative_doc_path(source_path)
 
-    probe_items: list[ContextItem] = [
-        ContextItem(path=path, role="scope", text="")
-        for path in scope_doc_paths
-    ]
-    probe_items.append(
-        ContextItem(
-            path=source_rel,
-            role="continuity",
-            text="",
-            is_canonical_handover=True,
-        )
-    )
-    kept = ContextBundle(items=tuple(probe_items)).dedup().kept
-    continuity_kept = any(
-        item.role == "continuity" and item.path == source_rel for item in kept
-    )
-
-    historical_context: Optional[str] = None
-    if continuity_kept and mode != "none" and source_path.is_file():
-        historical_context = load_historical_context(
-            source_path,
-            mode=mode,
-            max_chars=max_chars,
-        )
-
-    parts: list[str] = []
+    items: list[ContextItem] = []
     if scope_text:
-        parts.append(scope_text)
-    if historical_context is not None:
-        parts.append(historical_context)
+        items.append(
+            ContextItem(path=_SCOPE_PACKET_PATH, role="scope", text=scope_text)
+        )
+    seen_scope_paths: set[str] = {_SCOPE_PACKET_PATH}
+    for path in scope_doc_paths:
+        if path in seen_scope_paths:
+            continue
+        seen_scope_paths.add(path)
+        items.append(ContextItem(path=path, role="scope", text=""))
 
-    context = "\n\n".join(parts) if parts else None
-    historical_chars = len(historical_context) if historical_context is not None else 0
+    if mode != "none" and source_path.is_file():
+        raw_source_text = source_path.read_text(encoding="utf-8")
+        items.append(
+            ContextItem(
+                path=source_rel,
+                role="continuity",
+                text=raw_source_text,
+                is_canonical_handover=True,
+            )
+        )
+
+    def _continuity_summarizer(item: ContextItem) -> str:
+        rendered = _render_historical_continuity(
+            item.text, mode=mode, max_chars=max_chars
+        )
+        return rendered or ""
+
+    rendered_items = ContextBundle(items=tuple(items)).render(
+        summarizer=_continuity_summarizer
+    )
+
+    blocks = [rendered.rendered_text for rendered in rendered_items if rendered.rendered_text]
+    context = "\n\n".join(blocks) if blocks else None
+    historical_chars = sum(
+        len(rendered.rendered_text)
+        for rendered in rendered_items
+        if rendered.item.role == "continuity" and rendered.rendered_text
+    )
     return context, historical_chars
 
 
