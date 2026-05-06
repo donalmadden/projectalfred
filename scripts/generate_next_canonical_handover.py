@@ -1,19 +1,18 @@
-"""Generate the canonical handover for Concern X Slice 4 of Alfred's seam-discipline migration.
+"""Generate the canonical handover for Concern X Slice 5 of Alfred's seam-discipline migration.
 
 Follows the same validated canonical-generation path as the prior
-Slice 3 generator, but the planner is now grounded on the canonical
-`Doc Class` contract in `CONTEXT.md`, the resolved Concern X workflow
+Slice 4 generator, but the planner is now grounded on the canonical
+`Context Roles` definition in `CONTEXT.md`, the resolved Concern X workflow
 discussion, the post-grilling implementation plan, and the newly-ratified
-Slice 3 canonical handover (`docs/canonical/ALFRED_HANDOVER_15.md`).
-The target output is `docs/canonical/ALFRED_HANDOVER_16.md`, written
+Slice 4 canonical handover (`docs/canonical/ALFRED_HANDOVER_16.md`).
+The target output is `docs/canonical/ALFRED_HANDOVER_17.md`, written
 only after the structural and grounding validators pass.
 
-Scope of the generated handover: Concern X Slice 4 only — make the
-`canonical_handover` section contract explicit in `docs/DOCS_MANIFEST.yaml`
-and migrate the generator's historical-section extraction onto that
-declared contract, while leaving context bundles, renderer replacement,
-and validator-chain
-changes to later slices.
+Scope of the generated handover: Concern X Slice 5 only — replace the
+generator's ad-hoc planner-context assembly with a typed three-role context
+bundle (`scope`, `carry_forward`, `continuity`) that applies the resolved
+rendering rules and dedup precedence without starting renderer replacement
+or later validator-chain work.
 """
 from __future__ import annotations
 
@@ -29,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import yaml
 
+from alfred.context import ContextBundle, ContextItem
 from alfred.docs.contract_validator import split_markdown_by_contract
 from alfred.docs.contracts import DocContract, get_doc_class_contract
 from alfred.schemas.config import AlfredConfig
@@ -53,9 +53,9 @@ _LOCAL_PATH_RE = re.compile(
     r"`(?P<path>(?:docs|src|scripts|tests|configs|evals|\.github)/[A-Za-z0-9_./\-]+)`"
 )
 
-EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_16"
-EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_15"
-DISPLAY_TITLE = "Concern X Slice 4 — Canonical Handover Section Contract"
+EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_17"
+EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_16"
+DISPLAY_TITLE = "Concern X Slice 5 — Three-Role Typed Context Bundle"
 SOURCE_FILENAME = f"{EXPECTED_PREVIOUS_HANDOVER}.md"
 FAILED_FILENAME = f"{EXPECTED_HANDOVER_ID}_FAILED_CANDIDATE.md"
 DEFAULT_CONTEXT_CHARS = 6000
@@ -68,13 +68,18 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         source_path=CONTEXT_PATH,
         selectors=(
             SectionSelector(
+                "Context Roles",
+                "canonical definition of the three planner-context roles and their rendering + dedup semantics",
+                render_mode="facts_and_verbatim",
+            ),
+            SectionSelector(
                 "Doc Class",
-                "canonical definition of a doc class and the section-contract semantics Slice 4 must encode",
+                "section-contract semantics that the typed bundle relies on when summarizing canonical handovers",
                 render_mode="facts_and_verbatim",
             ),
             SectionSelector(
                 "No-LLM-Judge Constraint",
-                "deterministic validation constraint that still governs section-contract validation",
+                "deterministic validation constraint that still governs context-bundle assembly",
             ),
         ),
     ),
@@ -83,17 +88,17 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         selectors=(
             SectionSelector(
                 "Resolved (Concern X)",
-                "accepted seam-discipline decisions that Slice 4 must honor",
+                "accepted seam-discipline decisions that Slice 5 must honor",
                 render_mode="facts_only",
             ),
             SectionSelector(
-                "Fresh Findings From Recent Phase Advances > 6. Selective authoring exposed an implicit planning-doc schema",
-                "the concrete extractor failure mode that Slice 4 is meant to formalize",
+                "Fresh Findings From Recent Phase Advances > 1. Context duplication is now a real failure mode",
+                "the concrete duplication/provenance failure mode that Slice 5 must formalize",
                 render_mode="facts_and_verbatim",
             ),
             SectionSelector(
-                "J. Planning docs may need lightweight section contracts",
-                "resolved section-contract rationale and the decision to declare `canonical_handover` in the docs manifest",
+                "F. Context assembly should be provenance-aware",
+                "resolved three-role bundle rationale, rendering rules, and dedup precedence",
                 render_mode="facts_and_verbatim",
             ),
         ),
@@ -103,22 +108,22 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         selectors=(
             SectionSelector("Overview", "overall slice framing"),
             SectionSelector(
-                "Slice 4 — Canonical-handover section contract",
+                "Slice 5 — Three-role typed context bundle",
                 "active slice scope, files, tests, and acceptance criteria",
                 render_mode="facts_and_verbatim",
             ),
         ),
     ),
     DocumentSelectionSpec(
-        source_path=REPO_ROOT / "docs/canonical/ALFRED_HANDOVER_15.md",
+        source_path=REPO_ROOT / "docs/canonical/ALFRED_HANDOVER_16.md",
         selectors=(
             SectionSelector(
                 "WHAT EXISTS TODAY > Key Design Decisions Inherited (Do Not Revisit)",
-                "slice 3 decisions that remain locked during slice 4",
+                "slice 4 decisions that remain locked during slice 5",
             ),
             SectionSelector(
                 "POST-MORTEM",
-                "ratified close-out and explicit forward plan to Slice 4",
+                "ratified close-out and explicit forward plan to Slice 5",
                 render_mode="facts_and_verbatim",
             ),
         ),
@@ -170,67 +175,62 @@ _DOC_PATH_OVERRIDES = {
 }
 
 SPRINT_GOAL = (
-    "Generate the canonical handover that plans Concern X Slice 4 of Alfred's "
-    "seam-discipline migration. Slice 3 is complete and ratified in "
-    "ALFRED_HANDOVER_15; this next handover must execute Slice 4 only: make "
-    "the `canonical_handover` section contract explicit and consume it in the "
-    "historical-context extractor. Concretely the handover must specify: "
-    "(a) a `doc_classes:` declaration in `docs/DOCS_MANIFEST.yaml` for "
-    "`canonical_handover`, including the required level-2 headings, the "
-    "semantic class of each heading, and the rendering treatment each heading "
-    "carries for deterministic extraction; (b) a loader in "
-    "`src/alfred/docs/contracts.py` plus a validator in "
-    "`src/alfred/docs/contract_validator.py`, with a package marker at "
-    "`src/alfred/docs/__init__.py`; (c) the generator refactor in "
-    "`scripts/generate_next_canonical_handover.py` so `_split_level2_sections` "
-    "and the historical-context extraction path read the heading list from the "
-    "declared `canonical_handover` contract instead of hardcoding it; and "
-    "(d) test coverage in `tests/test_docs/test_contracts.py`, "
-    "`tests/test_docs/test_contract_validator.py`, plus a regression proving "
-    "historical extraction is byte-identical for `ALFRED_HANDOVER_12` before "
-    "and after the refactor, and validator coverage that all existing "
-    "canonical handovers in the repo pass the declared `canonical_handover` "
-    "contract. The handover must make explicit that Slice 4 declares "
-    "`canonical_handover` only; other planning-doc classes remain uncontracted "
-    "in this slice. Do not start Slice 5+ work such as typed "
-    "context bundles, renderer replacement, pre-flight validators, "
-    "post-generation validators, or failed-candidate filename short-circuiting. "
-    "This phase is section-contract declaration plus extractor refactor only."
+    "Generate the canonical handover that plans Concern X Slice 5 of Alfred's "
+    "seam-discipline migration. Slice 4 is complete and ratified in "
+    "ALFRED_HANDOVER_16; this next handover must execute Slice 5 only: "
+    "replace ad-hoc planner-context assembly with a typed `ContextBundle` that "
+    "models exactly three roles — `scope`, `carry_forward`, and `continuity` — "
+    "and applies the resolved rendering + dedup rules from `CONTEXT.md`. "
+    "Concretely the handover must specify: (a) a new `src/alfred/context/` "
+    "package with `bundle.py` defining the bundle type, closed role set, and "
+    "dedup precedence `scope` > `carry_forward` > `continuity`; (b) a refactor "
+    "of `scripts/generate_next_canonical_handover.py` so "
+    "`load_historical_context()` / `build_planner_context()` stop assembling an "
+    "opaque string blob and instead consume the typed bundle; (c) role-specific "
+    "rendering rules: `scope` full-text, non-handover `carry_forward` full-text, "
+    "canonical-handover `carry_forward` summarized via the existing deterministic "
+    "extractor, and `continuity` summarized via the same extractor; and "
+    "(d) test coverage in `tests/test_context/test_bundle.py` proving dedup "
+    "precedence and rendering behavior, including the Phase 3 duplicate-context "
+    "case where a canonical handover already present in authoritative scope is "
+    "suppressed from continuity. The handover must make explicit that Slice 5 "
+    "does not start renderer replacement, ledger-driven identity generation, "
+    "pre-flight validators, post-generation validators, or failed-candidate "
+    "filename logic. This phase is typed context-bundle refactor only."
 )
 
 DEMO_PLAN_GROUNDING = (
     "Authoritative scope sources for this handover (structured facts and "
     "selected verbatim sections included below in the planner context):\n"
-    "- `CONTEXT.md` — canonical glossary entry for `Doc Class` plus the "
-    "`No-LLM-Judge Constraint`; locks what a section contract is and that only "
-    "deterministic validators may consume it.\n"
+    "- `CONTEXT.md` — canonical glossary entries for `Context Roles`, "
+    "`Doc Class`, and `No-LLM-Judge Constraint`; locks the three-role bundle, "
+    "its rendering semantics, and the deterministic seam rule.\n"
     "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X "
-    "design discussion; explains why selective authoring exposed an implicit "
-    "planning-doc schema and why `canonical_handover` gets the first explicit "
-    "contract in `docs/DOCS_MANIFEST.yaml`.\n"
+    "design discussion; records the real context-duplication failure mode and "
+    "the adopted three-role provenance-aware bundle design.\n"
     "- `docs/active/POST_GRILL_1.md` — implementation plan for Concern X; "
-    "this handover plans Slice 4 only.\n"
-    "- `docs/canonical/ALFRED_HANDOVER_15.md` — previous ratified canonical "
-    "handover; confirms Slice 3 completion and explicitly names Slice 4 as the "
+    "this handover plans Slice 5 only.\n"
+    "- `docs/canonical/ALFRED_HANDOVER_16.md` — previous ratified canonical "
+    "handover; confirms Slice 4 completion and explicitly names Slice 5 as the "
     "next unit of work.\n"
     "Reference-doc rule for the generated canonical: cite every "
     "authoritative source doc that materially constrains the phase. Because "
     "this handover depends directly on `CONTEXT.md`, the workflow discussion, "
-    "the post-grill plan, and the Slice 3 close-out, cite those docs "
+    "the post-grill plan, and the Slice 4 close-out, cite those docs "
     "explicitly in "
     "`Reference Documents`.\n"
-    "Source-of-truth rule for Concern X Slice 4: the `canonical_handover` "
-    "section contract is declared in `docs/DOCS_MANIFEST.yaml`, but the "
-    "semantic meaning of a doc class and its section contract comes from "
-    "`CONTEXT.md`. The generator's historical extractor must deterministically "
-    "consume the declared contract instead of hardcoding heading lists, with "
-    "no LLM judgment.\n"
+    "Source-of-truth rule for Concern X Slice 5: `Context Roles` in "
+    "`CONTEXT.md` defines the three-role bundle, while Slice 4's "
+    "`canonical_handover` contract in `docs/DOCS_MANIFEST.yaml` remains the "
+    "deterministic summary mechanism used when a role renders a canonical "
+    "handover as summarized continuity/carry-forward. Keep the seam "
+    "deterministic; no LLM judgment or ad-hoc role invention.\n"
     "Treat the contents of those docs as the source of truth for scope. "
-    "Do not invent deliverables outside Slice 4. Do not start any later "
-    "Concern X slice (context bundle, renderer, pre-flight validators, "
-    "post-generation validators, or failed-candidate filename "
-    "short-circuit) in this handover. Do not reopen Phase 5 demo polish or add "
-    "new runtime product scope."
+    "Do not invent deliverables outside Slice 5. Do not start any later "
+    "Concern X slice (renderer replacement, pre-flight validators, "
+    "post-generation validators, or failed-candidate filename short-circuit) "
+    "in this handover. Do not reopen Phase 5 demo polish or add new runtime "
+    "product scope."
 )
 
 
@@ -541,18 +541,18 @@ def load_demo_plan_context() -> AuthoringContextPacket:
         existing_specs,
         repo_root=REPO_ROOT,
         intro_lines=(
-            "===== AUTHORITATIVE CONCERN X SLICE 4 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
-            "Pass 1 indexed the authoritative docs by doc-class semantics, no-LLM validation constraints, slice-level file/test targets, and ratified close-out guidance from Slice 3.",
-            "Pass 2 selected only the sections needed to author the Handover 16 canonical section-contract brief and rendered structured facts plus verbatim source excerpts.",
+            "===== AUTHORITATIVE CONCERN X SLICE 5 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
+            "Pass 1 indexed the authoritative docs by context-role semantics, deterministic seam constraints, slice-level file/test targets, and ratified close-out guidance from Slice 4.",
+            "Pass 2 selected only the sections needed to author the Handover 17 typed-context-bundle brief and rendered structured facts plus verbatim source excerpts.",
             "The source docs remain authoritative. The extracted packet is a deterministic view over those docs, not a replacement for them.",
             "",
             "===== AUTHORITATIVE SOURCE DOC MAP =====",
-            "- `CONTEXT.md` — canonical glossary for `Doc Class` and the no-LLM validator rule.",
-            "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X rationale for giving `canonical_handover` the first explicit section contract.",
-            "- `docs/active/POST_GRILL_1.md` — post-grill implementation plan with Slice 4 objective, files, tests, and acceptance criteria.",
-            "- `docs/canonical/ALFRED_HANDOVER_15.md` — ratified Slice 3 close-out and explicit forward plan to Slice 4.",
-            "Reference-doc expectation: the generated canonical should cite all four of those docs directly because they materially constrain this section-contract phase.",
-            "Source-of-truth expectation: Slice 4 declares `canonical_handover` in `docs/DOCS_MANIFEST.yaml` and migrates extractor logic onto that contract without inventing broader doc-class machinery.",
+            "- `CONTEXT.md` — canonical glossary for `Context Roles`, `Doc Class`, and the no-LLM validator rule.",
+            "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X rationale for provenance-aware context assembly with three roles.",
+            "- `docs/active/POST_GRILL_1.md` — post-grill implementation plan with Slice 5 objective, files, tests, and acceptance criteria.",
+            "- `docs/canonical/ALFRED_HANDOVER_16.md` — ratified Slice 4 close-out and explicit forward plan to Slice 5.",
+            "Reference-doc expectation: the generated canonical should cite all four of those docs directly because they materially constrain this typed-context-bundle phase.",
+            "Source-of-truth expectation: Slice 5 introduces a three-role `ContextBundle` and reuses Slice 4's `canonical_handover` contract for deterministic handover summaries without inventing later-slice machinery.",
         ),
     )
 
@@ -686,24 +686,58 @@ def build_planner_context(
     mode: str,
     max_chars: int = DEFAULT_CONTEXT_CHARS,
 ) -> tuple[Optional[str], int]:
-    """Assemble planner context while skipping duplicated continuity docs."""
+    """Assemble planner context via a typed three-role :class:`ContextBundle`.
+
+    Dedup precedence (`scope` > `carry_forward` > `continuity`) is delegated to
+    the bundle: when the historical handover's path also appears among the
+    authoritative-scope packet's source docs, the continuity item is dropped
+    deterministically — preserving the Phase 3 duplicate-context fix.
+    """
     if isinstance(authoritative_scope, str):
         scope_text = authoritative_scope
         source_rel = _repo_relative_doc_path(source_path)
-        scope_doc_paths = (source_rel,) if source_rel in scope_text else ()
+        scope_doc_paths: tuple[str, ...] = (
+            (source_rel,) if source_rel in scope_text else ()
+        )
     else:
         scope_text = authoritative_scope.text
         scope_doc_paths = authoritative_scope.source_doc_paths
 
-    historical_context = load_historical_context(
-        source_path,
-        mode=mode,
-        max_chars=max_chars,
-        excluded_doc_paths=scope_doc_paths,
+    source_rel = _repo_relative_doc_path(source_path)
+
+    probe_items: list[ContextItem] = [
+        ContextItem(path=path, role="scope", text="")
+        for path in scope_doc_paths
+    ]
+    probe_items.append(
+        ContextItem(
+            path=source_rel,
+            role="continuity",
+            text="",
+            is_canonical_handover=True,
+        )
     )
-    parts = [block for block in (scope_text, historical_context) if block]
+    kept = ContextBundle(items=tuple(probe_items)).dedup().kept
+    continuity_kept = any(
+        item.role == "continuity" and item.path == source_rel for item in kept
+    )
+
+    historical_context: Optional[str] = None
+    if continuity_kept and mode != "none" and source_path.is_file():
+        historical_context = load_historical_context(
+            source_path,
+            mode=mode,
+            max_chars=max_chars,
+        )
+
+    parts: list[str] = []
+    if scope_text:
+        parts.append(scope_text)
+    if historical_context is not None:
+        parts.append(historical_context)
+
     context = "\n\n".join(parts) if parts else None
-    historical_chars = len(historical_context) if historical_context else 0
+    historical_chars = len(historical_context) if historical_context is not None else 0
     return context, historical_chars
 
 
@@ -850,7 +884,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     else:
         print(
             "WARNING: authoritative scope docs missing; planner will lack the "
-            "ratified Phase 5 scope brief."
+            "ratified Slice 5 scope brief."
         )
 
     planner_out = None
