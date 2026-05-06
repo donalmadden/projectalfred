@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import yaml
 
-from alfred.context import ContextBundle, ContextItem
+from alfred.context import ContextBundle, ContextItem, summarize_canonical_handover
 from alfred.docs.contract_validator import split_markdown_by_contract
 from alfred.docs.contracts import DocContract, get_doc_class_contract
 from alfred.schemas.config import AlfredConfig
@@ -707,22 +707,34 @@ def build_planner_context(
     *,
     mode: str,
     max_chars: int = DEFAULT_CONTEXT_CHARS,
+    carry_forward_items: tuple[ContextItem, ...] = (),
 ) -> tuple[Optional[str], int]:
     """Assemble planner context via a typed three-role :class:`ContextBundle`.
 
     The bundle is the assembly mechanism — not just a dedup check. Each
     authoritative-scope source path is registered as a ``scope`` item, the
     pre-rendered scope packet flows through one synthetic-path ``scope`` item,
+    optional ``carry_forward_items`` are inserted directly into the bundle,
     and the previous canonical handover is registered as a ``continuity`` item
     carrying the raw source markdown. ``ContextBundle.render()`` then applies
     role-specific rendering and dedup precedence — when the source handover's
     path collides with a scope source, the continuity item is dropped
     deterministically (preserving the Phase 3 duplicate-context fix).
 
-    The ``continuity`` summarizer is supplied as a closure so the existing
-    ``--historical-context-mode`` degradation path (full/summary/minimal) is
-    preserved without reintroducing hardcoded heading strings.
+    Summarizer dispatch:
+    - ``continuity`` items use the mode-aware
+      :func:`_render_historical_continuity` so the existing
+      ``--historical-context-mode`` degradation path (full/summary/minimal) is
+      preserved without reintroducing hardcoded heading strings.
+    - ``carry_forward`` canonical-handover items use the contract-driven
+      :func:`summarize_canonical_handover` (Slice 4 deterministic summary).
     """
+    for item in carry_forward_items:
+        if item.role != "carry_forward":
+            raise ValueError(
+                f"carry_forward_items must all carry role='carry_forward'; "
+                f"got {item.role!r} on {item.path!r}."
+            )
     if isinstance(authoritative_scope, str):
         scope_text = authoritative_scope
         source_rel = _repo_relative_doc_path(source_path)
@@ -747,6 +759,8 @@ def build_planner_context(
         seen_scope_paths.add(path)
         items.append(ContextItem(path=path, role="scope", text=""))
 
+    items.extend(carry_forward_items)
+
     if mode != "none" and source_path.is_file():
         raw_source_text = source_path.read_text(encoding="utf-8")
         items.append(
@@ -758,14 +772,18 @@ def build_planner_context(
             )
         )
 
-    def _continuity_summarizer(item: ContextItem) -> str:
-        rendered = _render_historical_continuity(
-            item.text, mode=mode, max_chars=max_chars
-        )
-        return rendered or ""
+    def _summarizer(item: ContextItem) -> str:
+        if item.role == "continuity":
+            rendered = _render_historical_continuity(
+                item.text, mode=mode, max_chars=max_chars
+            )
+            return rendered or ""
+        # carry_forward canonical handovers use the Slice 4 contract-driven
+        # deterministic summary (default bundle path).
+        return summarize_canonical_handover(item.text)
 
     rendered_items = ContextBundle(items=tuple(items)).render(
-        summarizer=_continuity_summarizer
+        summarizer=_summarizer
     )
 
     blocks = [rendered.rendered_text for rendered in rendered_items if rendered.rendered_text]

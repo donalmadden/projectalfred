@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import generate_next_canonical_handover as gnch  # noqa: E402
 
+from alfred.context import ContextItem  # noqa: E402
 from alfred.tools.docs_policy import is_citable_doc
 
 
@@ -379,3 +380,90 @@ def test_load_historical_context_summary_is_byte_identical_for_handover_12() -> 
     )
 
     assert actual == expected
+
+
+def test_build_planner_context_renders_carry_forward_non_handover_full_text(
+    tmp_path: Path,
+) -> None:
+    """A non-handover ``carry_forward`` item must render its full text."""
+    source = tmp_path / "docs" / "canonical" / f"{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
+    source.parent.mkdir(parents=True)
+    # Make source nonexistent so continuity is omitted and we isolate carry_forward.
+    carry = ContextItem(
+        path="docs/adr/0007-context-roles.md",
+        role="carry_forward",
+        text="ADR 0007 BODY — full carry-forward text.",
+        is_canonical_handover=False,
+    )
+
+    context, historical_chars = gnch.build_planner_context(
+        "SCOPE_PACKET",
+        source,
+        mode="none",
+        carry_forward_items=(carry,),
+    )
+
+    assert context is not None
+    assert "SCOPE_PACKET" in context
+    assert "ADR 0007 BODY — full carry-forward text." in context
+    assert historical_chars == 0
+
+
+def test_build_planner_context_renders_carry_forward_canonical_handover_as_summary(
+    tmp_path: Path,
+) -> None:
+    """A canonical-handover ``carry_forward`` item must render via the
+    contract-driven deterministic summary, not its raw full text."""
+    source = tmp_path / "docs" / "canonical" / f"{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
+    source.parent.mkdir(parents=True)
+
+    handover_markdown = (
+        "# Old Handover\n\n"
+        "## CONTEXT — READ THIS FIRST\n"
+        "Carried context body line.\n\n"
+        "## TASK OVERVIEW\n"
+        "| # | Task |\n|---|---|\n| 1 | do x |\n\n"
+        "## HARD RULES\n"
+        "UNIQUE_RAW_TOKEN_THAT_SHOULD_NOT_LEAK\n"
+    )
+    carry = ContextItem(
+        path="docs/canonical/ALFRED_HANDOVER_15.md",
+        role="carry_forward",
+        text=handover_markdown,
+        is_canonical_handover=True,
+    )
+
+    context, historical_chars = gnch.build_planner_context(
+        "SCOPE_PACKET",
+        source,
+        mode="none",
+        carry_forward_items=(carry,),
+    )
+
+    assert context is not None
+    assert "SCOPE_PACKET" in context
+    # Summary surfaces contract section keys (per summarize_canonical_handover)…
+    assert "### context" in context
+    assert "Carried context body line." in context
+    # …but does not include arbitrary out-of-section raw text.
+    assert "UNIQUE_RAW_TOKEN_THAT_SHOULD_NOT_LEAK" not in context
+    assert historical_chars == 0
+
+
+def test_build_planner_context_rejects_mistagged_carry_forward_items(
+    tmp_path: Path,
+) -> None:
+    """Defensive: callers must hand role-tagged items, not silently mixed roles."""
+    import pytest
+
+    source = tmp_path / "docs" / "canonical" / f"{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
+    source.parent.mkdir(parents=True)
+    bogus = ContextItem(path="x.md", role="scope", text="x")
+
+    with pytest.raises(ValueError):
+        gnch.build_planner_context(
+            "SCOPE",
+            source,
+            mode="none",
+            carry_forward_items=(bogus,),
+        )
