@@ -1,18 +1,16 @@
-"""Generate the canonical handover for Concern X Slice 6 of Alfred's seam-discipline migration.
+"""Generate the next canonical handover from the PhaseLedger + active Brief.
 
-Follows the same validated canonical-generation path as the prior
-Slice 5 generator, but the planner is now grounded on the canonical
-`Phase Ledger` / `Brief` definitions in `CONTEXT.md`, the resolved Concern X
-workflow discussion, the post-grilling implementation plan, and the
-newly-ratified Slice 5 canonical handover (`docs/canonical/ALFRED_HANDOVER_17.md`).
-The target output is `docs/canonical/ALFRED_HANDOVER_18.md`, written
-only after the structural and grounding validators pass.
+Identity (`handover_id`, `previous_handover`, display title), sprint goal,
+demo-plan grounding, and argparse defaults are derived deterministically
+from `docs/active/PHASE_LEDGER.yaml` and the planning row's `Brief` via
+`alfred.render.handover_inputs.render_handover_inputs`. Advancing phases
+is now "edit the ledger, run the script" — no hand-edited identity
+literals live in this module.
 
-Scope of the generated handover: Concern X Slice 6 only — replace the
-generator's hand-edited identity constants with a renderer over
-`PhaseLedger` and the active `Brief`, while preserving the typed three-role
-context-bundle seam from Slice 5 and without starting validator-chain or
-failed-candidate lifecycle work.
+The downstream pipeline (planner call, three-role `ContextBundle`
+assembly, contract-driven canonical-handover summary, validators, and
+promotion) is unchanged from Slice 5. Phase-specific narrative for the
+generated draft comes from the brief; this module is a thin orchestrator.
 """
 from __future__ import annotations
 
@@ -31,6 +29,8 @@ import yaml
 from alfred.context import ContextBundle, ContextItem, summarize_canonical_handover
 from alfred.docs.contract_validator import split_markdown_by_contract
 from alfred.docs.contracts import DocContract, get_doc_class_contract
+from alfred.ledger.loader import load_ledger
+from alfred.render.handover_inputs import HandoverInputs, render_handover_inputs
 from alfred.schemas.config import AlfredConfig
 from alfred.tools.docs_policy import (
     is_citable_doc,
@@ -53,9 +53,17 @@ _LOCAL_PATH_RE = re.compile(
     r"`(?P<path>(?:docs|src|scripts|tests|configs|evals|\.github)/[A-Za-z0-9_./\-]+)`"
 )
 
-EXPECTED_HANDOVER_ID = "ALFRED_HANDOVER_18"
-EXPECTED_PREVIOUS_HANDOVER = "ALFRED_HANDOVER_17"
-DISPLAY_TITLE = "Concern X Slice 6 — Renderer Replaces Hand-Edited Identity Constants"
+LEDGER_PATH = REPO_ROOT / "docs/active/PHASE_LEDGER.yaml"
+HANDOVER_INPUTS: HandoverInputs = render_handover_inputs(load_ledger(LEDGER_PATH))
+
+# Identity is derived from the ledger; these names are kept for minimal-diff
+# compatibility with downstream callers and tests, but they are no longer
+# hand-edited literals.
+EXPECTED_HANDOVER_ID = HANDOVER_INPUTS.handover_id
+EXPECTED_PREVIOUS_HANDOVER = HANDOVER_INPUTS.previous_handover
+DISPLAY_TITLE = HANDOVER_INPUTS.display_title
+SPRINT_GOAL = HANDOVER_INPUTS.sprint_goal
+DEMO_PLAN_GROUNDING = HANDOVER_INPUTS.demo_plan_grounding
 SOURCE_FILENAME = f"{EXPECTED_PREVIOUS_HANDOVER}.md"
 FAILED_FILENAME = f"{EXPECTED_HANDOVER_ID}_FAILED_CANDIDATE.md"
 DEFAULT_CONTEXT_CHARS = 6000
@@ -198,67 +206,6 @@ _DOC_PATH_OVERRIDES = {
     f"docs/{FAILED_FILENAME}": FAILED_OUTPUT_PATH.relative_to(REPO_ROOT).as_posix(),
 }
 
-SPRINT_GOAL = (
-    "Generate the canonical handover that plans Concern X Slice 6 of Alfred's "
-    "seam-discipline migration. Slice 5 is complete and ratified in "
-    "ALFRED_HANDOVER_17; this next handover must execute Slice 6 only: turn the "
-    "generator into a renderer over `PhaseLedger` + active `Brief` so the "
-    "handover identity/constants stop being hand-edited. Concretely the handover "
-    "must specify: (a) a new `src/alfred/render/` package with a deterministic "
-    "renderer surface (for example `handover_inputs.py`) that derives "
-    "`EXPECTED_HANDOVER_ID`, `EXPECTED_PREVIOUS_HANDOVER`, `DISPLAY_TITLE`, "
-    "`SPRINT_GOAL`, `DEMO_PLAN_GROUNDING`, argparse help defaults, and the "
-    "module docstring from the ledger + active brief; (b) a refactor of "
-    "`scripts/generate_next_canonical_handover.py` so the existing planner "
-    "pipeline consumes renderer-produced inputs instead of hand-maintained "
-    "constants; (c) preservation of Slice 5's typed `ContextBundle` seam and "
-    "Slice 4's deterministic `canonical_handover` summary path; and (d) test "
-    "coverage in `tests/test_render/test_handover_inputs.py` plus updated "
-    "`tests/test_scripts/test_generate_next_canonical_handover.py` assertions "
-    "that test renderer output against a fixture ledger/brief rather than prose "
-    "constants. The handover must make explicit that Slice 6 keeps the external "
-    "CLI and promotion behavior stable while changing only the internal "
-    "source-of-truth. Do not start Slice 7+ work (pre-flight validators, "
-    "post-generation validators, or failed-candidate filename logic)."
-)
-
-DEMO_PLAN_GROUNDING = (
-    "Authoritative scope sources for this handover (structured facts and "
-    "selected verbatim sections included below in the planner context):\n"
-    "- `CONTEXT.md` — canonical glossary entries for `Phase Ledger`, `Brief`, "
-    "`Context Roles`, `Doc Class`, and `No-LLM-Judge Constraint`; locks the "
-    "renderer inputs plus the preserved bundle/summary seams.\n"
-    "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X "
-    "design discussion; records the adopted phase-ledger source-of-truth, "
-    "human-authored brief, renderer-fixture testing stance, and preserved "
-    "provenance-aware context assembly rules.\n"
-    "- `docs/active/POST_GRILL_1.md` — implementation plan for Concern X; "
-    "this handover plans Slice 6 only.\n"
-    "- `docs/canonical/ALFRED_HANDOVER_17.md` — previous ratified canonical "
-    "handover; confirms Slice 5 completion and explicitly names Slice 6 as the "
-    "next unit of work.\n"
-    "- `docs/active/PHASE_LEDGER.yaml` — current seed ledger input; not "
-    "packet-indexed because the authoring packet is markdown-derived, but it is "
-    "repo truth for concrete renderer inputs and active-phase selection examples.\n"
-    "Reference-doc rule for the generated canonical: cite every "
-    "authoritative source doc that materially constrains the phase. Because "
-    "this handover depends directly on `CONTEXT.md`, the workflow discussion, "
-    "the post-grill plan, and the Slice 5 close-out, cite those docs "
-    "explicitly in `Reference Documents`. Cite `docs/active/PHASE_LEDGER.yaml` "
-    "too when you discuss concrete renderer inputs or active-phase examples.\n"
-    "Source-of-truth rule for Concern X Slice 6: `Phase Ledger` and `Brief` in "
-    "`CONTEXT.md` define the renderer inputs; Slice 5's `Context Roles` and "
-    "Slice 4's `canonical_handover` contract remain preserved deterministic "
-    "seams inside the generator. Keep the workflow deterministic; no LLM "
-    "judgment, no ad-hoc phase identity editing, and no role invention.\n"
-    "Treat the contents of those docs as the source of truth for scope. "
-    "Do not invent deliverables outside Slice 6. Do not start any later "
-    "Concern X slice (pre-flight validators, post-generation validators, or "
-    "failed-candidate filename short-circuit) in this handover. Do not reopen "
-    "blank-project demo product scope or redesign the context-bundle seam."
-)
-
-
 def compute_generation_date() -> str:
     """Return today's ISO date. Isolated so tests can patch it."""
     return datetime.date.today().isoformat()
@@ -301,28 +248,19 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--source",
         type=Path,
         default=SOURCE_PATH.relative_to(REPO_ROOT),
-        help=(
-            "Historical handover to use for continuity "
-            f"(default: docs/canonical/{EXPECTED_PREVIOUS_HANDOVER}.md)"
-        ),
+        help=HANDOVER_INPUTS.argparse_defaults.source_help,
     )
     parser.add_argument(
         "--output",
         type=Path,
         default=OUTPUT_PATH.relative_to(REPO_ROOT),
-        help=(
-            "Canonical output path to write on success "
-            f"(default: docs/canonical/{EXPECTED_HANDOVER_ID}.md)"
-        ),
+        help=HANDOVER_INPUTS.argparse_defaults.output_help,
     )
     parser.add_argument(
         "--failed-output",
         type=Path,
         default=FAILED_OUTPUT_PATH.relative_to(REPO_ROOT),
-        help=(
-            "Where to write a failed candidate when validation blocks promotion "
-            f"(default: docs/archive/{EXPECTED_HANDOVER_ID}_FAILED_CANDIDATE.md)"
-        ),
+        help=HANDOVER_INPUTS.argparse_defaults.failed_output_help,
     )
     parser.add_argument(
         "--historical-context-mode",
@@ -862,6 +800,7 @@ def validate_candidate(
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
+    print(HANDOVER_INPUTS.module_docstring)
     source_path = resolve_repo_path(args.source)
     output_path = resolve_repo_path(args.output)
     failed_output_path = (
