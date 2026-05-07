@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
@@ -786,3 +787,189 @@ def test_preflight_failure_blocks_planner_invocation(monkeypatch, capsys) -> Non
     assert "Pre-flight validation failed" in captured
     assert "[A_scope_paths_exist]" in captured
     assert "forced preflight failure for test" in captured
+
+
+def test_postgen_failure_writes_failed_candidate_and_blocks_promotion(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Script-boundary proof for CHECKPOINT-2.
+
+    Drives ``main()`` far enough to reach the post-generation gate:
+    preflight is forced to PASS, every LLM/IO seam is stubbed, and
+    ``run_planner`` returns deterministic markdown that fails postgen
+    Check 1 / Check 5 / Check 6. We then assert:
+
+    - ``run_planner`` was actually invoked (so postgen runs *after*
+      planner return, not before)
+    - the ``FAILED_CANDIDATE`` artifact is written and includes the
+      validation-failure block plus ``[POSTGEN:...]`` rows
+    - the canonical output file retains its pre-existing sentinel
+      content (i.e. promotion was blocked)
+    - ``main(...)`` returns 1
+    """
+    import alfred.agents.planner as planner_module
+    import alfred.orchestrator as orchestrator_module
+    import alfred.tools.git_log as git_log_module
+    import alfred.tools.llm as llm_module
+    import alfred.tools.persistence as persistence_module
+    import alfred.tools.rag as rag_module
+    import alfred.tools.repo_facts as repo_facts_module
+    from alfred.schemas.agent import PlannerOutput
+
+    fake_canonical = tmp_path / "ALFRED_HANDOVER_20.md"
+    fake_failed = tmp_path / "ALFRED_HANDOVER_20_FAILED_CANDIDATE.md"
+
+    # Pre-existing canonical file — its content must survive the run.
+    sentinel = "PRE-EXISTING SENTINEL — must not be overwritten\n"
+    fake_canonical.write_text(sentinel, encoding="utf-8")
+
+    # Preflight passes; the manifest-policy gate passes; corpus indexing
+    # is a no-op. None of these are under test here.
+    monkeypatch.setattr(gnch, "run_generator_preflight", lambda _src: [])
+    monkeypatch.setattr(
+        gnch, "validate_required_citable_docs", lambda _src: []
+    )
+    monkeypatch.setattr(gnch, "index_corpus", lambda *a, **k: 0)
+
+    # Empty authoring packet + trivial planner-context so we don't read
+    # the full doc tree just to reach the planner branch.
+    empty_packet = gnch.AuthoringContextPacket(
+        text="",
+        source_doc_paths=(),
+        selected_sections=(),
+        facts=(),
+        source_char_count=0,
+        packet_char_count=0,
+    )
+    monkeypatch.setattr(gnch, "load_demo_plan_context", lambda: empty_packet)
+    monkeypatch.setattr(
+        gnch, "build_planner_context", lambda *_a, **_k: ("", 0)
+    )
+
+    # Lazy-imported seams — patched at the source module so the
+    # ``from alfred.X import Y`` inside ``main()`` picks our fakes up.
+    monkeypatch.setattr(rag_module, "retrieve", lambda *a, **k: [])
+    monkeypatch.setattr(
+        repo_facts_module, "build_repo_facts_summary", lambda: []
+    )
+    fake_git_lines = ["abc1234  fake commit for postgen test"]
+    monkeypatch.setattr(
+        git_log_module, "read_git_log", lambda *a, **k: list(fake_git_lines)
+    )
+    monkeypatch.setattr(
+        persistence_module, "get_velocity_history", lambda *a, **k: []
+    )
+    monkeypatch.setattr(
+        llm_module,
+        "resolve_model",
+        lambda agent, config: ("test-provider", "test-model"),
+    )
+    monkeypatch.setattr(
+        planner_module, "load_canonical_template", lambda _path: ""
+    )
+
+    # Planner returns markdown that is structurally complete enough to
+    # pass the cheap heading scan but is wrong on identity, hard rules,
+    # and per-task brief mapping — i.e. exactly the ground postgen owns.
+    bad_markdown = (
+        "# Alfred's Handover Document #20 — bad draft\n\n"
+        "## CONTEXT — READ THIS FIRST\n\n"
+        "**id:** ALFRED_HANDOVER_99\n"
+        "**date:** 2026-05-07\n"
+        "**previous_handover:** ALFRED_HANDOVER_19\n\n"
+        "**Reference Documents:**\n"
+        "- `docs/canonical/ALFRED_HANDOVER_19.md` — continuity\n\n"
+        "## WHAT EXISTS TODAY\n\n"
+        "### Git History\n\n"
+        f"```\n{fake_git_lines[0]}\n```\n\n"
+        "## HARD RULES\n\n1. Filler — no anchors.\n\n"
+        "## WHAT THIS PHASE PRODUCES\n\n- nothing.\n\n"
+        "## TASK OVERVIEW\n\n"
+        "| # | Task | Deliverable | Checkpoint decides |\n"
+        "|---|---|---|---|\n"
+        "| 1 | unmapped | unmapped | CHECKPOINT-1 |\n"
+        "| 2 | unmapped | unmapped | CHECKPOINT-2 |\n"
+        "| 3 | unmapped | unmapped | CHECKPOINT-3 |\n\n"
+        "## TASK 1 — unmapped\n\nbody\n\n"
+        "## TASK 2 — unmapped\n\nbody\n\n"
+        "## TASK 3 — unmapped\n\nbody\n\n"
+        "## WHAT NOT TO DO\n\n1. nope.\n\n"
+        "## POST-MORTEM\n\nbody\n\n"
+        "**next_handover_id:** ALFRED_HANDOVER_21\n"
+    )
+
+    planner_calls: list[int] = []
+
+    def fake_run_planner(_input, **_kwargs):
+        planner_calls.append(1)
+        return PlannerOutput(draft_handover_markdown=bad_markdown)
+
+    monkeypatch.setattr(planner_module, "run_planner", fake_run_planner)
+    # Critique loop is a pure pass-through so postgen sees the planner
+    # output unchanged.
+    monkeypatch.setattr(
+        orchestrator_module, "_run_critique_loop", lambda md, *a, **k: md
+    )
+
+    # Stub the structure + facts validators so postgen owns the failure
+    # signal. They are imported lazily inside validate_candidate(), so
+    # we register stubs in sys.modules ahead of time.
+    fake_structure = ModuleType("validate_alfred_handover")
+    fake_structure.validate = lambda _md: []  # type: ignore[attr-defined]
+    monkeypatch.setitem(
+        sys.modules, "validate_alfred_handover", fake_structure
+    )
+    fake_facts = ModuleType("validate_alfred_planning_facts")
+    fake_facts.validate_current_state_facts = (  # type: ignore[attr-defined]
+        lambda *a, **k: []
+    )
+    fake_facts.validate_future_task_realism = (  # type: ignore[attr-defined]
+        lambda *a, **k: []
+    )
+    monkeypatch.setitem(
+        sys.modules, "validate_alfred_planning_facts", fake_facts
+    )
+
+    rc = gnch.main(
+        [
+            "--source",
+            str(tmp_path / "missing_source.md"),
+            "--output",
+            str(fake_canonical),
+            "--failed-output",
+            str(fake_failed),
+        ]
+    )
+    captured = capsys.readouterr().out
+
+    # 1) Planner was reached — postgen runs AFTER planner return.
+    assert planner_calls == [1], (
+        "run_planner must have been called exactly once; postgen runs "
+        "after planner return, not before"
+    )
+
+    # 2) main() exits non-zero on a postgen block.
+    assert rc == 1, "main() must return 1 when postgen blocks promotion"
+
+    # 3) FAILED_CANDIDATE artifact exists, carries the failing draft,
+    #    and includes the [POSTGEN:...] block per the brief's "include
+    #    validator error output in the artifact body" rule.
+    assert fake_failed.is_file(), (
+        "FAILED_CANDIDATE artifact must be written on postgen failure"
+    )
+    artifact = fake_failed.read_text(encoding="utf-8")
+    assert "VALIDATION FAILED" in artifact
+    assert "[POSTGEN:" in artifact
+    assert "ALFRED_HANDOVER_99" in artifact, (
+        "artifact must contain the failing draft body, not just errors"
+    )
+
+    # 4) Canonical output path was NOT updated.
+    assert fake_canonical.read_text(encoding="utf-8") == sentinel, (
+        "canonical output must remain untouched when postgen blocks "
+        "promotion"
+    )
+
+    # 5) Operator-visible failure message confirms the wiring.
+    assert "Validation failed" in captured
+    assert str(fake_failed) in captured
