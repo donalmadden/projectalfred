@@ -110,14 +110,28 @@ _PREVIOUS_RE = re.compile(
 # unresolved closure work and is not safe to ratify.
 _FUTURE_TAG_RE = re.compile(r"\[future-(?:doc|path):\s*[^\]]*\]")
 
-# Task overview row in the table block, e.g.:
-#   "| 1 | Title | Deliverable | CHECKPOINT-1 |"
-_TASK_ROW_RE = re.compile(r"(?m)^\|\s*(?P<n>\d+)\s*\|")
+def _task_overview_row(overview_section: str, n: int) -> str | None:
+    """Return the row text for task ``n`` in the overview table, or ``None``."""
+    for line in overview_section.splitlines():
+        m = re.match(r"^\|\s*(\d+)\s*\|", line)
+        if m and int(m.group(1)) == n:
+            return line
+    return None
 
-# Task section heading, e.g. "## TASK 1 — Title"
-_TASK_HEADING_RE = re.compile(
-    r"(?m)^##\s+TASK\s+(?P<n>\d+)\s*[—\-:]"
-)
+
+def _task_section_body(markdown: str, n: int) -> str | None:
+    """Return the body of the ``## TASK n —`` section, or ``None`` if absent.
+
+    The body runs from immediately after the heading to (but not
+    including) the next ``##`` heading or end-of-document.
+    """
+    pattern = re.compile(
+        r"(?ms)^##\s+TASK\s+" + str(n) + r"\s*[—\-:][^\n]*$(?P<body>.*?)(?=^##\s|\Z)"
+    )
+    match = pattern.search(markdown)
+    if match is None:
+        return None
+    return match.group("body")
 
 
 def _parse_headings(markdown: str) -> list[tuple[int, str, int]]:
@@ -461,14 +475,22 @@ def check_hard_rules_presence(
 def check_task_closure(
     markdown: str,
     *,
-    expected_task_count: int,
+    required_task_markers: Sequence[Sequence[str]],
 ) -> list[PostgenError]:
-    """Check 6 — Task overview and per-task sections are consistent.
+    """Check 6 — task overview, task sections, and per-task brief mapping.
 
-    Verifies (a) ``## TASK OVERVIEW`` has at least ``expected_task_count``
-    numbered rows and (b) a ``## TASK N —`` section exists for each
-    1..expected_task_count. Title text is not asserted (titles drift
-    legitimately between drafts); structural closure is.
+    For each task ``n`` in ``1..len(required_task_markers)`` the draft must:
+
+    1. Have a numbered row for ``n`` in ``## TASK OVERVIEW``.
+    2. Have a ``## TASK n — <Title>`` section.
+    3. Mention at least one of the brief-seed markers for that task
+       somewhere in the combined row + section body. Matching is
+       case-insensitive substring so legitimate title drift is allowed
+       while topic drift (e.g. task 3 silently losing the "test" focus)
+       is caught.
+
+    Title text itself is intentionally not asserted — the brief markers
+    encode the topic mapping the slice contract requires.
     """
     errors: list[PostgenError] = []
     overview = _section_text(markdown, "TASK OVERVIEW")
@@ -479,29 +501,50 @@ def check_task_closure(
                 message="missing required section '## TASK OVERVIEW'",
             )
         )
-    else:
-        row_numbers = {int(m.group("n")) for m in _TASK_ROW_RE.finditer(overview)}
-        for n in range(1, expected_task_count + 1):
-            if n not in row_numbers:
-                errors.append(
-                    PostgenError(
-                        check="6_task_closure",
-                        message=(
-                            f"'## TASK OVERVIEW' table missing row for "
-                            f"task {n}"
-                        ),
-                    )
-                )
 
-    task_heading_numbers = {
-        int(m.group("n")) for m in _TASK_HEADING_RE.finditer(markdown)
-    }
-    for n in range(1, expected_task_count + 1):
-        if n not in task_heading_numbers:
+    for index, markers in enumerate(required_task_markers, start=1):
+        row_text = (
+            _task_overview_row(overview, index) if overview is not None else None
+        )
+        section_body = _task_section_body(markdown, index)
+
+        if row_text is None and overview is not None:
             errors.append(
                 PostgenError(
                     check="6_task_closure",
-                    message=f"missing required section '## TASK {n} — <Title>'",
+                    message=(
+                        f"'## TASK OVERVIEW' table missing row for "
+                        f"task {index}"
+                    ),
+                )
+            )
+        if section_body is None:
+            errors.append(
+                PostgenError(
+                    check="6_task_closure",
+                    message=(
+                        f"missing required section '## TASK {index} — "
+                        "<Title>'"
+                    ),
+                )
+            )
+
+        # If neither row nor section is present, the existence errors
+        # above are enough — skip the marker check to avoid duplicate
+        # noise for the same root cause.
+        if row_text is None and section_body is None:
+            continue
+
+        combined = ((row_text or "") + "\n" + (section_body or "")).lower()
+        if not any(marker.lower() in combined for marker in markers):
+            errors.append(
+                PostgenError(
+                    check="6_task_closure",
+                    message=(
+                        f"task {index} no longer maps to brief seed: none "
+                        f"of the expected markers {list(markers)} appear "
+                        "in the task overview row or task section body"
+                    ),
                 )
             )
     return errors
@@ -514,15 +557,35 @@ def validate_postgen(
     expected_previous: str,
     expected_date: str,
     expected_git_history_lines: Sequence[str],
-    required_hard_rule_phrases: Sequence[str] = (),
-    expected_task_count: int = 3,
+    required_hard_rule_phrases: Sequence[str],
+    required_task_markers: Sequence[Sequence[str]],
 ) -> PostgenResult:
     """Run all six post-generation checks and return a structured result.
 
     Checks run independently; the function does not short-circuit so the
     operator sees every blocking issue in a single ``FAILED_CANDIDATE``
     artifact. ``ok`` is true iff every check passed.
+
+    ``required_hard_rule_phrases`` and ``required_task_markers`` are
+    deliberately required (no default): the "fixed six checks" contract
+    means Check 5 (hard-rules presence) and Check 6 (task-to-brief
+    mapping) must never silently no-op because a caller forgot to pass
+    them. Empty sequences raise :class:`ValueError` rather than producing
+    a misleadingly-clean :class:`PostgenResult`.
     """
+    if not required_hard_rule_phrases:
+        raise ValueError(
+            "validate_postgen: required_hard_rule_phrases must be "
+            "non-empty; Check 5 (hard-rules presence) cannot silently "
+            "no-op."
+        )
+    if not required_task_markers:
+        raise ValueError(
+            "validate_postgen: required_task_markers must be non-empty; "
+            "Check 6 (task-to-brief mapping) cannot silently skip the "
+            "task closure contract."
+        )
+
     errors: list[PostgenError] = []
     errors.extend(
         check_metadata_identity(
@@ -549,7 +612,7 @@ def validate_postgen(
     errors.extend(
         check_task_closure(
             draft_markdown,
-            expected_task_count=expected_task_count,
+            required_task_markers=required_task_markers,
         )
     )
     return PostgenResult(ok=not errors, errors=tuple(errors))
