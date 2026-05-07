@@ -115,8 +115,11 @@ Out of scope:
 
    **Minimum five checks (fixed scope for Slice 7):**
 
-   - **Check A — scope-source paths exist**
-     - For each scope-source path selected for the active phase, verify it exists in the working tree.
+   - **Check A — assembled scope-input paths exist**
+     - Validate the actual doc set that the generator will register as `scope` items, not merely the planning row's direct `scope_sources` field.
+     - For this repo today, derive that set from the same authoring-context selection plan / authoritative packet inputs that `build_planner_context(...)` will consume at runtime.
+     - Exclude synthetic in-memory packet markers (for example the pre-rendered scope packet path placeholder) from filesystem existence checks.
+     - Do **not** implement this check by iterating `active.scope_sources` alone: the live Slice 7 planning row carries scope via prior ratified phase material and authoring-packet selection, while direct `scope_sources` may be empty.
      - Errors must name the missing path(s).
      - Validator must be deterministic: file existence only.
 
@@ -194,6 +197,8 @@ pyright
      - know the active planning row / handover inputs (from Slice 6 renderer)
      - know which docs will be used for context roles
    - But it must run **before** any planner/LLM call is made.
+   - Build one deterministic context-input plan first (scope doc paths, carry-forward items, continuity source path), and feed that same plan into both preflight and the later planner-context assembly so validation and runtime cannot drift.
+   - Construct that plan before any "missing file" filtering step; a missing scope doc must fail loudly rather than disappearing from the packet builder's input set.
 
 2. **Hard-fail behavior**
    - On any preflight failure:
@@ -289,6 +294,8 @@ pytest -q
 3. Do **not** weaken Slice 6 continuity by inferring `previous_handover` from phase ordering; missing/malformed continuity must fail loudly.
 4. Do **not** “fix” failures by silently dropping docs from context roles; preflight should surface the problem, not mask it.
 5. Do **not** add new CLI flags or change the meaning of existing ones as part of wiring.
+6. Do **not** implement Check A by validating only the planning row's direct `scope_sources`; validate the real `scope` role inputs the generator will register.
+7. Do **not** let nonexistent scope docs disappear via preflight inputs that were already filtered by `Path.is_file()` or equivalent; missing paths must remain visible to the validator.
 
 ---
 
