@@ -419,6 +419,88 @@ def test_dry_run_output_reflects_renderer_derived_identity() -> None:
     assert "no LLM call, no files modified" in out
 
 
+def test_dry_run_helper_is_pure_over_fixture_inputs(tmp_path: Path) -> None:
+    """The script's dry-run renderer is a pure function over HandoverInputs.
+
+    Builds a fixture ``PhaseLedger``, renders ``HandoverInputs`` from it,
+    then drives the *script-boundary* dry-run helper directly. Every line
+    of the produced text must reflect the fixture identity, not the live
+    repo's planning row. This is the strongest form of the Slice 6
+    contract: identity flows ledger → renderer → script with no
+    hand-edited literal in between.
+    """
+    fixture = _fixture_ledger_with(
+        handover_id="ALFRED_HANDOVER_777",
+        previous_handover="ALFRED_HANDOVER_776",
+        title="Fixture-driven script test",
+        goal="Drive the script's dry-run helper from a fixture ledger.",
+    )
+    inputs = render_handover_inputs(fixture)
+
+    fake_source = tmp_path / "in.md"
+    fake_output = tmp_path / "out.md"
+    fake_failed = tmp_path / "failed.md"
+
+    report = gnch.render_dry_run_report(
+        inputs,
+        source_path=fake_source,
+        output_path=fake_output,
+        failed_output_path=fake_failed,
+    )
+
+    assert "--- DRY RUN: renderer-derived identity ---" in report
+    assert "# Fixture-driven script test" in report
+    assert "id: ALFRED_HANDOVER_777" in report
+    assert "previous_handover: ALFRED_HANDOVER_776" in report
+    assert f"would-read source:   {fake_source}" in report
+    assert f"would-write output:  {fake_output}" in report
+    assert f"would-write failed:  {fake_failed}" in report
+    assert "(no LLM call, no files modified)" in report
+
+    # Negative: the live repo's identity must not leak into fixture output.
+    assert gnch.HANDOVER_INPUTS.handover_id not in report
+    assert gnch.HANDOVER_INPUTS.previous_handover not in report
+    assert gnch.HANDOVER_INPUTS.display_title not in report
+
+
+def test_dry_run_helper_matches_subprocess_output_for_live_inputs(
+    tmp_path: Path,
+) -> None:
+    """The pure helper reproduces the live ``--dry-run`` text exactly.
+
+    Confirms ``main()`` consumes the same helper that tests exercise — so
+    fixture-driven helper assertions translate directly to script-level
+    behavior, not to a parallel code path.
+    """
+    fake_output = tmp_path / "out.md"
+    fake_failed = tmp_path / "failed.md"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/generate_next_canonical_handover.py"),
+            "--dry-run",
+            "--output",
+            str(fake_output),
+            "--failed-output",
+            str(fake_failed),
+        ],
+        cwd=str(ROOT),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    expected_block = gnch.render_dry_run_report(
+        gnch.HANDOVER_INPUTS,
+        source_path=gnch.resolve_repo_path(
+            Path(gnch.HANDOVER_INPUTS.argparse_defaults.source_default)
+        ),
+        output_path=fake_output,
+        failed_output_path=fake_failed,
+    )
+    assert expected_block in completed.stdout
+
+
 def test_dry_run_does_not_write_canonical_output(tmp_path: Path) -> None:
     """``--dry-run`` must not touch the canonical or failed output paths."""
     fake_output = tmp_path / "fake_canonical.md"

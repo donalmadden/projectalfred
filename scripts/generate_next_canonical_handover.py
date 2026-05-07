@@ -225,6 +225,33 @@ def compute_generation_date() -> str:
     return datetime.date.today().isoformat()
 
 
+def render_dry_run_report(
+    inputs: HandoverInputs,
+    *,
+    source_path: Path,
+    output_path: Path,
+    failed_output_path: Path,
+) -> str:
+    """Render the ``--dry-run`` block deterministically from a HandoverInputs.
+
+    Pure function over its arguments — no module-level globals — so tests
+    can drive it with a fixture-derived ``HandoverInputs`` and confirm
+    every line of the script-boundary output follows the fixture identity.
+    """
+    return "\n".join(
+        [
+            "--- DRY RUN: renderer-derived identity ---",
+            f"# {inputs.display_title}",
+            f"id: {inputs.handover_id}",
+            f"previous_handover: {inputs.previous_handover}",
+            f"would-read source:   {source_path}",
+            f"would-write output:  {output_path}",
+            f"would-write failed:  {failed_output_path}",
+            "(no LLM call, no files modified)",
+        ]
+    )
+
+
 def build_failed_output_path(output_path: Path) -> Path:
     """Where to save a candidate if validation fails before canonical promotion."""
     filename = f"{output_path.stem}_FAILED_CANDIDATE{output_path.suffix}"
@@ -856,14 +883,15 @@ def main(argv: Optional[list[str]] = None) -> int:
             if args.failed_output is not None
             else build_failed_output_path(output_path)
         )
-        print("\n--- DRY RUN: renderer-derived identity ---")
-        print(f"# {DISPLAY_TITLE}")
-        print(f"id: {EXPECTED_HANDOVER_ID}")
-        print(f"previous_handover: {EXPECTED_PREVIOUS_HANDOVER}")
-        print(f"would-read source:   {source_path}")
-        print(f"would-write output:  {output_path}")
-        print(f"would-write failed:  {failed_output_path}")
-        print("(no LLM call, no files modified)")
+        print()
+        print(
+            render_dry_run_report(
+                HANDOVER_INPUTS,
+                source_path=source_path,
+                output_path=output_path,
+                failed_output_path=failed_output_path,
+            )
+        )
         return 0
     source_path = resolve_repo_path(args.source)
     output_path = resolve_repo_path(args.output)
