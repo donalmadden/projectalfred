@@ -71,58 +71,65 @@ phases:
 
   - id: 8
     title: "Slice 8 — Post-generation validators"
-    status: planning
+    status: ratified
     handover_id: ALFRED_HANDOVER_20
-    previous_handover: ALFRED_HANDOVER_19
     scope_sources:
       - docs/active/POST_GRILL_1.md
       - docs/active/HANDOVER_WORKFLOW_DISCUSSION.md
       - CONTEXT.md
     scope_carry_forward: [7]
+
+  - id: 9
+    title: "Slice 9 — Failed-candidate filename short-circuit"
+    status: planning
+    handover_id: ALFRED_HANDOVER_21
+    previous_handover: ALFRED_HANDOVER_20
+    scope_sources:
+      - docs/active/POST_GRILL_1.md
+      - docs/active/HANDOVER_WORKFLOW_DISCUSSION.md
+      - CONTEXT.md
+    scope_carry_forward: [8]
     brief:
-      title: "Slice 8 — Post-generation validators"
+      title: "Slice 9 — Failed-candidate filename short-circuit"
       goal: |
-        Add six deterministic post-generation validators to
-        scripts/generate_next_canonical_handover.py so planner output is
-        checked before promotion, failed candidates are written when
-        validation blocks promotion, and the Slice 7 pre-flight gate plus
-        Slice 6 renderer-derived identity flow remain intact.
+        Make scripts/validate_alfred_handover.py recognise
+        *_FAILED_CANDIDATE.md filenames and skip id/filename checks while
+        running every other structural check unchanged, so failed
+        candidates remain a debugging surface without producing spurious
+        id/filename errors and without weakening Slice 7 pre-flight or
+        Slice 8 post-generation gates.
       hard_rules:
-        - "Slice 8 only: implement post-generation validation after planner return; do not start Slice 9 failed-candidate filename short-circuit logic."
-        - "No LLM-judge anywhere: post-generation checks must be deterministic code only, per ADR-0003."
-        - "Preserve Slice 7's fail-fast pre-flight gate before any LLM call; Slice 8 adds a second deterministic gate after planner output, not a replacement."
-        - "On post-generation failure, write a FAILED_CANDIDATE artifact and do not promote to the canonical output path."
-        - "Preserve Slice 5's three-role ContextBundle seam and Slice 6's renderer-derived identity / CLI surface."
+        - "Slice 9 only: implement filename short-circuit on the structural validator; do not start Slice 10+ work."
+        - "No LLM-judge anywhere: short-circuit logic must be deterministic code only, per ADR-0003."
+        - "Preserve Slice 7's pre-flight gate and Slice 8's post-generation gate; the short-circuit applies only to the structural validator on FAILED_CANDIDATE files."
+        - "FAILED_CANDIDATE files remain a debugging surface, not protocol artifacts: do not promote them, alter their lifecycle, or extend their metadata contract."
+        - "Other structural checks must still run on FAILED_CANDIDATE files; the short-circuit is narrow."
       tasks:
         - id: "1"
-          title: Implement the deterministic post-generation validator module
+          title: Implement the FAILED_CANDIDATE filename short-circuit
           intent: >-
-            Create src/alfred/validate/postgen.py with the fixed six-check
-            minimum over planner output and promotion safety.
+            Edit scripts/validate_alfred_handover.py so paths whose
+            filename matches *_FAILED_CANDIDATE.md skip the id/filename
+            structural checks while every other structural check runs
+            unchanged.
         - id: "2"
-          title: Wire post-generation validation into the generator after planning
+          title: Add tests proving the short-circuit and the other-checks-still-run guarantee
           intent: >-
-            Refactor scripts/generate_next_canonical_handover.py so
-            post-generation checks run after planner output is produced and
-            before promotion, writing FAILED_CANDIDATE on failure without
-            changing the external CLI flags.
-        - id: "3"
-          title: Add isolated negative tests and a known-good regression
-          intent: >-
-            Create tests/test_validate/test_postgen.py covering each failed
-            check in isolation, plus an integration assertion that
-            reconstructable known-good handovers pass post-generation
-            validation against their notional briefs.
+            Edit tests/test_scripts/test_validate_alfred_handover.py with
+            a synthetic FAILED_CANDIDATE fixture that has an intentional
+            id mismatch plus a separate structural failure (e.g. malformed
+            reference tag), proving both halves of the contract — id-skip
+            on FAILED_CANDIDATE, other checks still fire.
       out_of_scope:
-        - Slice 9 failed-candidate filename short-circuit logic.
-        - Broad validator refactors beyond the minimum deterministic sharing needed for post-generation checks.
-        - Generalizing Slice-6-specific authoritative-scope packet wording unless it is required to land post-generation checks safely.
-        - FastAPI endpoint or service-wiring changes.
+        - Slice 10+ enhancements.
+        - Changing the FAILED_CANDIDATE artifact format produced by scripts/generate_next_canonical_handover.py.
+        - Generalising the short-circuit beyond filename pattern matching.
+        - Touching Slice 7 pre-flight or Slice 8 post-generation validators.
       definition_of_done:
-        - "All 6 deterministic post-generation checks are implemented with at least one negative test each."
-        - "scripts/generate_next_canonical_handover.py writes FAILED_CANDIDATE and blocks promotion when post-generation validation fails."
-        - "Known-good prior handovers pass post-generation validation against reconstructed or notional briefs."
+        - "scripts/validate_alfred_handover.py recognises *_FAILED_CANDIDATE.md and skips id/filename checks on those files."
+        - "All other structural checks still run on FAILED_CANDIDATE files, including malformed-reference-tag detection."
+        - "At least one negative test proves the short-circuit; at least one test proves the other-checks-still-run guarantee."
         - "No LLM-judge logic is introduced anywhere in the validation chain."
       followups_from_prior_phase:
-        - "Preserve the shared context-input planning seam from Slice 7 so post-generation validation does not drift from real generator behaviour."
-        - "Preserve Slice 7's script-boundary fail-fast proof pattern: negative tests should prove promotion-blocking behaviour explicitly, not only by manual smoke runs."
+        - "Carry forward Slice 8's pattern of script-boundary tests proving end-to-end behaviour, not only unit-level."
+        - "Preserve the seam discipline established in Slice 8: validators stay pure matchers; semantic policy lives in callers."

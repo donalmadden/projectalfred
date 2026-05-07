@@ -279,22 +279,22 @@ def test_real_ledger_loads_and_active_phase_selection_is_deterministic():
     ledger = load_ledger(REAL_LEDGER_PATH)
     active = select_active_phase(ledger)
     assert active.status == "planning"
-    assert active.handover_id == "ALFRED_HANDOVER_20"
+    assert active.handover_id == "ALFRED_HANDOVER_21"
     assert active.brief is not None
-    assert active.brief.hard_rules, "Slice 8 brief must declare hard rules"
+    assert active.brief.hard_rules, "Slice 9 brief must declare hard rules"
     assert any(
         task.id == "1" for task in active.brief.tasks
-    ), "Slice 8 brief must declare ordered task seeds"
+    ), "Slice 9 brief must declare ordered task seeds"
 
     # Calling render twice must be byte-identical: the renderer is pure.
     inputs_a = render_handover_inputs(ledger)
     inputs_b = render_handover_inputs(ledger)
     assert inputs_a == inputs_b
-    assert inputs_a.handover_id == "ALFRED_HANDOVER_20"
-    assert active.previous_handover == "ALFRED_HANDOVER_19"
-    assert inputs_a.previous_handover == "ALFRED_HANDOVER_19"
+    assert inputs_a.handover_id == "ALFRED_HANDOVER_21"
+    assert active.previous_handover == "ALFRED_HANDOVER_20"
+    assert inputs_a.previous_handover == "ALFRED_HANDOVER_20"
     assert inputs_a.argparse_defaults.source_default == (
-        "docs/canonical/ALFRED_HANDOVER_19.md"
+        "docs/canonical/ALFRED_HANDOVER_20.md"
     )
     assert "Hard rules" in inputs_a.sprint_goal
 

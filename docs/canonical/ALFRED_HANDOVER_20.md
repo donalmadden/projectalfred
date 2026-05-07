@@ -284,15 +284,26 @@ python -m pyright
 > cold-start from this artifact alone.
 
 **What worked:**
-- *executor to fill*
+- Postgen landed cleanly as a sibling of the Slice-7 preflight module: same `check_*` shape, same orchestrator pattern, same `format_errors` operator surface. The package's public re-exports stayed minimal so callers compose explicit inputs rather than inheriting policy.
+- The active phase's `Brief` (already in the ledger from Slice 6) carried everything postgen needed — `hard_rules`, `tasks[].intent`, `tasks[].title` — so deriving Check-5 anchors and Check-6 markers required no new schema or new editorial seed.
+- Folding postgen into `validate_candidate()` reused the existing `FAILED_CANDIDATE` write convention. The artifact body now carries an HTML-comment validation-failure block at the tail so reviewers see both the failing draft and `format_postgen_errors()` output in one file.
+- Symmetric script-boundary tests for the two gates now form a matched pair: `test_preflight_failure_blocks_planner_invocation` proves no LLM call before preflight; `test_postgen_failure_writes_failed_candidate_and_blocks_promotion` proves the canonical output is never written after a failing draft.
 
 **What was harder than expected:**
-- *executor to fill*
+- CHECKPOINT-1 went green only after two follow-up tightenings: Check 6 had to enforce per-task brief mapping (heading existence alone was too weak), and Check 5 had to refuse to silently no-op on empty phrases. Both gaps were caught by reviewer pushback, not by the validator's own self-tests.
+- Substring-matching the brief's full `hard_rules` text would have failed the canonical handover #20 itself — the rendered prose legitimately paraphrases the brief. Resolution: extract one stable per-rule anchor (ALL-CAPS const, `Slice N`, CamelCase, hyphenated identifier) in the script and pass that to Check 5. The validator stayed a pure substring matcher; the deriver carries the paraphrase tolerance.
+- CHECKPOINT-2 needed a deterministic script-boundary test, not a unit test. Driving `main()` past preflight into the postgen branch required patching the lazy `from alfred.X import Y` imports at the *source* module so the inner imports inside `main()` pick up the fakes, plus stubbing `validate_alfred_handover` and `validate_alfred_planning_facts` via `sys.modules` so postgen owned the failure signal.
 
 **Decisions made during execution (deviations from this plan):**
-- *executor to fill — each deviation must include: what changed, why, who approved*
+- Hard-rule and task-marker derivers live in the script (the caller), not the validator. Why: the validator should stay a pure substring matcher; semantic normalisation (paraphrase tolerance) is project-specific policy that varies per slice. Putting it in the script keeps the validator reusable and the script auditable. Approved during CHECKPOINT-1 follow-up.
+- Replaced `expected_task_count` with `required_task_markers: Sequence[Sequence[str]]` on the `validate_postgen` surface. Why: task count and per-task topic markers should share a single source of truth so a caller cannot pass `count=3` while supplying only two marker lists. The orchestrator now also raises `ValueError` on empty `required_hard_rule_phrases` or `required_task_markers` so Check 5/6 can never silently no-op. Approved during CHECKPOINT-1 follow-up.
+- Folded postgen into the existing `validate_candidate()` path rather than running it as a separate gate stage. Why: a single failure path means the `FAILED_CANDIDATE` artifact captures every blocking issue (structure + facts + postgen) in one operator-readable artifact. Approved during Task 2.
+- Enriched the `FAILED_CANDIDATE` artifact body with an HTML-comment block containing `format_postgen_errors()` output. Why: the brief required errors in the artifact body; HTML-comment keeps the file parseable as markdown by reviewers without polluting the draft. Approved during Task 2.
 
 **Forward plan:**
-- *executor to fill*
+- Ratify Slice 8 in `docs/active/PHASE_LEDGER.yaml` and seed Slice 9 as `ALFRED_HANDOVER_21` with `ALFRED_HANDOVER_20` as the explicit `previous_handover`.
+- Slice 9 implements failed-candidate filename short-circuit in `scripts/validate_alfred_handover.py`: recognise `*_FAILED_CANDIDATE.md` filenames, skip id/filename checks, run every other structural check unchanged. Test strategy is a synthetic `FAILED_CANDIDATE` file with an intentional id mismatch plus a separate failing structural check, proving both halves of the contract.
+- The hard-rule and task-marker derivers in `scripts/generate_next_canonical_handover.py` are slice-agnostic and should not need changes for Slice 9.
+- Carry forward the seam discipline established here: validators stay deterministic pure matchers; semantic policy lives in callers; script-boundary tests prove gate behaviour end-to-end, not only at unit level.
 
 **next_handover_id:** ALFRED_HANDOVER_21

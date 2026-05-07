@@ -23,25 +23,25 @@ def test_seed_ledger_loads_and_round_trips() -> None:
     assert ledger.project == "blank_project_kickoff_demo"
 
     phase_ids = [p.id for p in ledger.phases]
-    assert phase_ids == [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    assert phase_ids == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     ratified_phases = [p for p in ledger.phases if p.status == "ratified"]
     planning_phases = [p for p in ledger.phases if p.status == "planning"]
 
-    assert len(ratified_phases) == 8
+    assert len(ratified_phases) == 9
     for phase in ratified_phases:
         assert phase.handover_id is not None
         assert phase.brief is None
         assert phase.previous_handover is None
 
-    # Exactly one unratified seed row — Slice 8 — drives the renderer.
+    # Exactly one unratified seed row — Slice 9 — drives the renderer.
     assert len(planning_phases) == 1
     active = planning_phases[0]
-    assert active.handover_id == "ALFRED_HANDOVER_20"
+    assert active.handover_id == "ALFRED_HANDOVER_21"
     # previous_handover is explicit on the planning row; it is not inferred
-    # from phase-id ordering, which would resolve to ALFRED_HANDOVER_19 only
+    # from phase-id ordering, which would resolve to ALFRED_HANDOVER_20 only
     # accidentally in a single-track ledger.
-    assert active.previous_handover == "ALFRED_HANDOVER_19"
+    assert active.previous_handover == "ALFRED_HANDOVER_20"
     assert active.brief is not None
     assert active.title == active.brief.title
 
