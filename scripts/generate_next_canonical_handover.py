@@ -150,7 +150,7 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         selectors=(
             SectionSelector("Overview", "overall slice framing"),
             SectionSelector(
-                "Slice 6 — Renderer replaces hand-edited identity constants",
+                DISPLAY_TITLE,
                 "active slice scope, files, tests, and acceptance criteria",
                 render_mode="facts_and_verbatim",
             ),
@@ -160,8 +160,8 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         source_path=_previous_canonical_handover_path(),
         selectors=(
             SectionSelector(
-                "WHAT EXISTS TODAY > Current generator + contract surfaces (Slice 4 baseline)",
-                "current generator state before the renderer replaces hand-edited identity constants",
+                "WHAT EXISTS TODAY",
+                "current repository and generator state inherited from the previous ratified phase",
             ),
             SectionSelector(
                 "WHAT EXISTS TODAY > Key Design Decisions Inherited (Do Not Revisit)",

@@ -291,6 +291,33 @@ def test_authoritative_scope_includes_phase_ledger_brief_and_context_roles() -> 
     )
 
 
+def test_live_authoritative_packet_tracks_active_slice_and_previous_handover() -> None:
+    post_grill_specs = [
+        spec
+        for spec in gnch.AUTHORITATIVE_SCOPE_SELECTION_SPECS
+        if spec.source_path.name == "POST_GRILL_1.md"
+    ]
+    assert len(post_grill_specs) == 1
+    assert any(
+        selector.path_suffix == gnch.DISPLAY_TITLE
+        for selector in post_grill_specs[0].selectors
+    )
+
+    packet = gnch.load_demo_plan_context()
+
+    assert packet.text.strip()
+    assert any(
+        section.source_path == "docs/active/POST_GRILL_1.md"
+        and section.section_path.endswith(gnch.DISPLAY_TITLE)
+        for section in packet.selected_sections
+    )
+    assert any(
+        section.source_path == f"docs/canonical/{gnch.EXPECTED_PREVIOUS_HANDOVER}.md"
+        and section.section_path.endswith("WHAT EXISTS TODAY")
+        for section in packet.selected_sections
+    )
+
+
 def test_sprint_goal_and_grounding_are_renderer_derived() -> None:
     """Identity-bearing globals must come from ``HANDOVER_INPUTS``.
 
