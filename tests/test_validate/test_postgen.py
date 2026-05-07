@@ -42,7 +42,6 @@ from alfred.validate.postgen import (  # noqa: E402
     check_task_closure,
 )
 
-
 # ---------------------------------------------------------------------------
 # Minimal passing draft — every negative test mutates exactly one thing.
 # ---------------------------------------------------------------------------

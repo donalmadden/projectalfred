@@ -17,8 +17,9 @@ validators; ad-hoc regexes elsewhere should be migrated onto it.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Iterator, Literal
+from typing import Literal
 
 ReferenceTagKind = Literal["future-doc", "future-path"]
 

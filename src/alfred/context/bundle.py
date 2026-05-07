@@ -18,9 +18,10 @@ heading knowledge.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Literal, Optional, get_args
+from typing import Literal, Optional, get_args
 
 from alfred.docs.contract_validator import split_markdown_by_contract
 from alfred.docs.contracts import get_doc_class_contract

@@ -28,8 +28,9 @@ The six checks are:
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Literal, Sequence
+from typing import Literal
 
 CheckId = Literal[
     "1_metadata_identity",

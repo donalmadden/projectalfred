@@ -20,9 +20,10 @@ every blocking issue in a single report.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Literal
 
 from alfred.ledger.models import PhaseLedger
 from alfred.refs.tags import scan_reference_tags

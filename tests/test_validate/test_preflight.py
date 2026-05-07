@@ -22,7 +22,6 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from alfred.ledger.loader import load_ledger  # noqa: E402
 from alfred.ledger.models import Brief, Phase, PhaseLedger, TaskSeed  # noqa: E402
 from alfred.validate import run_preflight  # noqa: E402
 from alfred.validate.preflight import (  # noqa: E402
@@ -263,8 +262,9 @@ def test_next_handover_id_mismatch_blocks_planner_invocation(
     labelled ``AssertionError`` if a regression ever lets execution flow
     past the gate. No real LLM is invoked or required.
     """
-    import alfred.agents.planner as planner_module
     import generate_next_canonical_handover as gnch
+
+    import alfred.agents.planner as planner_module
 
     bad_source = tmp_path / "MISMATCHED_PREVIOUS.md"
     bad_source.write_text(

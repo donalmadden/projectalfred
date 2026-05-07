@@ -22,9 +22,9 @@ avoid an ambiguous overload across two error types.
 from alfred.validate.postgen import (
     PostgenError,
     PostgenResult,
+    validate_postgen,
 )
 from alfred.validate.postgen import format_errors as format_postgen_errors
-from alfred.validate.postgen import validate_postgen
 from alfred.validate.preflight import (
     CHECK_IDS,
     CheckId,
