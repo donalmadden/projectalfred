@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -13,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import generate_next_canonical_handover as gnch  # noqa: E402
 
 from alfred.context import ContextItem  # noqa: E402
+from alfred.ledger.models import Brief, Phase, PhaseLedger, TaskSeed  # noqa: E402
+from alfred.render.handover_inputs import render_handover_inputs  # noqa: E402
 from alfred.tools.docs_policy import is_citable_doc
 
 
@@ -305,6 +308,139 @@ def test_sprint_goal_and_grounding_are_renderer_derived() -> None:
     assert active.sprint_goal.strip()
     assert active.demo_plan_grounding.strip()
     assert "deterministic" in active.demo_plan_grounding
+
+
+def test_all_identity_globals_track_handover_inputs() -> None:
+    """Every identity-bearing module global must equal its renderer source.
+
+    This is the wiring contract for Slice 6: if these ever drift, the
+    generator has reintroduced a hand-edited literal somewhere.
+    """
+    inputs = gnch.HANDOVER_INPUTS
+    assert gnch.EXPECTED_HANDOVER_ID == inputs.handover_id
+    assert gnch.EXPECTED_PREVIOUS_HANDOVER == inputs.previous_handover
+    assert gnch.DISPLAY_TITLE == inputs.display_title
+    assert gnch.SOURCE_FILENAME == f"{inputs.previous_handover}.md"
+    assert gnch.FAILED_FILENAME == f"{inputs.handover_id}_FAILED_CANDIDATE.md"
+
+
+def _fixture_ledger_with(
+    *,
+    handover_id: str,
+    previous_handover: str,
+    title: str,
+    goal: str,
+) -> PhaseLedger:
+    return PhaseLedger(
+        project="renderer_wiring_fixture",
+        plan_path="docs/active/POST_GRILL_1.md",
+        phases=[
+            Phase(
+                id=1,
+                title="Earlier ratified",
+                status="ratified",
+                handover_id=previous_handover,
+            ),
+            Phase(
+                id=2,
+                title=title,
+                status="planning",
+                handover_id=handover_id,
+                previous_handover=previous_handover,
+                scope_sources=["docs/active/POST_GRILL_1.md"],
+                brief=Brief(
+                    title=title,
+                    goal=goal,
+                    hard_rules=["fixture rule"],
+                    tasks=[
+                        TaskSeed(
+                            id="1",
+                            title="Fixture task",
+                            intent="Prove the script's defaults follow the renderer.",
+                        ),
+                    ],
+                ),
+            ),
+        ],
+    )
+
+
+def test_renderer_drives_argparse_defaults_over_a_fixture_ledger() -> None:
+    """A different ledger ⇒ different argparse defaults — no prose pinning."""
+    fixture = _fixture_ledger_with(
+        handover_id="ALFRED_HANDOVER_999",
+        previous_handover="ALFRED_HANDOVER_998",
+        title="Fixture phase title",
+        goal="Fixture goal that drives sprint-goal rendering deterministically.",
+    )
+    inputs = render_handover_inputs(fixture)
+
+    assert inputs.argparse_defaults.source_default == (
+        "docs/canonical/ALFRED_HANDOVER_998.md"
+    )
+    assert inputs.argparse_defaults.output_default == (
+        "docs/canonical/ALFRED_HANDOVER_999.md"
+    )
+    assert inputs.argparse_defaults.failed_output_default == (
+        "docs/archive/ALFRED_HANDOVER_999_FAILED_CANDIDATE.md"
+    )
+    # Sprint goal includes brief.goal verbatim and the hard-rules header.
+    assert inputs.sprint_goal.startswith(
+        "Fixture goal that drives sprint-goal rendering deterministically."
+    )
+    assert "Hard rules" in inputs.sprint_goal
+    # Display title matches the fixture brief title (and phase title).
+    assert inputs.display_title == "Fixture phase title"
+
+
+def test_dry_run_output_reflects_renderer_derived_identity() -> None:
+    """``--dry-run`` reports the live renderer's identity and would-write paths.
+
+    Pin the assertions to ``HANDOVER_INPUTS`` rather than to specific phase
+    numbers so this test stays green across phase advances.
+    """
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/generate_next_canonical_handover.py"), "--dry-run"],
+        cwd=str(ROOT),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    out = completed.stdout
+    inputs = gnch.HANDOVER_INPUTS
+
+    assert "--- DRY RUN: renderer-derived identity ---" in out
+    assert f"# {inputs.display_title}" in out
+    assert f"id: {inputs.handover_id}" in out
+    assert f"previous_handover: {inputs.previous_handover}" in out
+    assert f"docs/canonical/{inputs.previous_handover}.md" in out
+    assert f"docs/canonical/{inputs.handover_id}.md" in out
+    assert f"docs/archive/{inputs.handover_id}_FAILED_CANDIDATE.md" in out
+    assert "no LLM call, no files modified" in out
+
+
+def test_dry_run_does_not_write_canonical_output(tmp_path: Path) -> None:
+    """``--dry-run`` must not touch the canonical or failed output paths."""
+    fake_output = tmp_path / "fake_canonical.md"
+    fake_failed = tmp_path / "fake_failed.md"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/generate_next_canonical_handover.py"),
+            "--dry-run",
+            "--output",
+            str(fake_output),
+            "--failed-output",
+            str(fake_failed),
+        ],
+        cwd=str(ROOT),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0
+    assert not fake_output.exists()
+    assert not fake_failed.exists()
 
 
 def _legacy_split_level2_sections(markdown: str) -> dict[str, str]:
