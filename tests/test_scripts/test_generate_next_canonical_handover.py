@@ -730,3 +730,59 @@ def test_build_planner_context_rejects_mistagged_carry_forward_items(
             mode="none",
             carry_forward_items=(bogus,),
         )
+
+
+def test_preflight_failure_blocks_planner_invocation(monkeypatch, capsys) -> None:
+    """A failing preflight hard-fails ``main()`` before any planner / LLM call.
+
+    Patches ``run_generator_preflight`` to return a deterministic
+    ``PreflightError``, then wires tripwires into every post-preflight
+    code path the script would normally enter (the manifest-policy
+    check, corpus indexing, and the lazy-imported ``run_planner``). The
+    tripwires raise on touch, so if the script ever reaches them after
+    a failing preflight, this test fails with a recognizable signal —
+    not just a non-zero exit code. That is the explicit proof
+    CHECKPOINT-2 asks for.
+    """
+    import alfred.agents.planner as planner_module
+
+    sentinel_error = gnch.PreflightError(
+        check="A_scope_paths_exist",
+        message=(
+            "forced preflight failure for test: scope-role input path "
+            "does not exist on disk: docs/active/IMAGINARY.md"
+        ),
+    )
+    monkeypatch.setattr(
+        gnch, "run_generator_preflight", lambda _src: [sentinel_error]
+    )
+
+    def _tripwire(name: str):
+        def _raise(*_args, **_kwargs):
+            raise AssertionError(
+                f"{name} was invoked after a failing preflight; the "
+                "post-preflight / LLM code path must not run."
+            )
+
+        return _raise
+
+    monkeypatch.setattr(
+        gnch,
+        "validate_required_citable_docs",
+        _tripwire("validate_required_citable_docs"),
+    )
+    monkeypatch.setattr(gnch, "index_corpus", _tripwire("index_corpus"))
+    monkeypatch.setattr(
+        planner_module,
+        "run_planner",
+        _tripwire("alfred.agents.planner.run_planner"),
+        raising=False,
+    )
+
+    rc = gnch.main([])
+
+    assert rc == 1
+    captured = capsys.readouterr().out
+    assert "Pre-flight validation failed" in captured
+    assert "[A_scope_paths_exist]" in captured
+    assert "forced preflight failure for test" in captured

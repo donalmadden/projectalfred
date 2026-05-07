@@ -30,7 +30,11 @@ from alfred.context import ContextBundle, ContextItem, summarize_canonical_hando
 from alfred.docs.contract_validator import split_markdown_by_contract
 from alfred.docs.contracts import DocContract, get_doc_class_contract
 from alfred.ledger.loader import load_ledger
-from alfred.render.handover_inputs import HandoverInputs, render_handover_inputs
+from alfred.render.handover_inputs import (
+    HandoverInputs,
+    render_handover_inputs,
+    select_active_phase,
+)
 from alfred.schemas.config import AlfredConfig
 from alfred.tools.docs_policy import (
     is_citable_doc,
@@ -44,6 +48,7 @@ from alfred.tools.handover_authoring_context import (
     build_authoring_context_packet,
 )
 from alfred.tools.rag import index_corpus
+from alfred.validate import PreflightError, format_errors, run_preflight
 
 REPO_ROOT = Path(__file__).parent.parent
 CONFIG_PATH = REPO_ROOT / "configs" / "default.yaml"
@@ -615,6 +620,54 @@ def validate_required_citable_docs(source_path: Path) -> list[str]:
     return missing
 
 
+def run_generator_preflight(source_path: Path) -> list[PreflightError]:
+    """Run the deterministic Slice-7 preflight before any planner / LLM call.
+
+    Builds one context-input plan from the ledger + the script's
+    ``AUTHORITATIVE_SCOPE_SELECTION_SPECS`` and feeds it to
+    :func:`alfred.validate.run_preflight`. The same plan reflects what the
+    downstream :func:`build_planner_context` call will register, so
+    validation and runtime cannot drift.
+
+    Important: the input lists are constructed **before** any
+    ``Path.is_file()`` filtering. A missing scope doc must surface as a
+    preflight Check-A failure rather than silently disappearing from the
+    packet builder's input set.
+
+    Role-assignment plan: each authoritative-scope source gets role
+    ``scope``; the previous canonical handover gets role ``continuity``
+    only when it is not already an authoritative scope source — the
+    Slice-5 ``ContextBundle`` applies the same precedence at runtime via
+    dedup, so collapsing it here avoids flagging the intentional
+    defensive registration while still catching genuine misassignments.
+    """
+    ledger = load_ledger(LEDGER_PATH)
+    active = select_active_phase(ledger)
+
+    scope_paths = tuple(
+        spec.source_path for spec in AUTHORITATIVE_SCOPE_SELECTION_SPECS
+    )
+    scope_rel_paths = tuple(_repo_relative_doc_path(p) for p in scope_paths)
+    role_assignments: list[tuple[str, str]] = [
+        (rel, "scope") for rel in scope_rel_paths
+    ]
+    source_rel = _repo_relative_doc_path(source_path)
+    if source_rel not in scope_rel_paths:
+        role_assignments.append((source_rel, "continuity"))
+
+    reference_tag_sources = tuple(p for p in scope_paths if p.suffix == ".md")
+
+    return run_preflight(
+        ledger=ledger,
+        scope_paths=scope_paths,
+        carry_forward_phase_ids=tuple(active.scope_carry_forward),
+        previous_handover_path=source_path,
+        expected_handover_id=EXPECTED_HANDOVER_ID,
+        role_assignments=tuple(role_assignments),
+        reference_tag_sources=reference_tag_sources,
+    )
+
+
 def _render_historical_continuity(
     text: str,
     *,
@@ -875,14 +928,30 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     print(HANDOVER_INPUTS.module_docstring)
 
-    if args.dry_run:
-        source_path = resolve_repo_path(args.source)
-        output_path = resolve_repo_path(args.output)
-        failed_output_path = (
-            resolve_repo_path(args.failed_output)
-            if args.failed_output is not None
-            else build_failed_output_path(output_path)
+    source_path = resolve_repo_path(args.source)
+    output_path = resolve_repo_path(args.output)
+    failed_output_path = (
+        resolve_repo_path(args.failed_output)
+        if args.failed_output is not None
+        else build_failed_output_path(output_path)
+    )
+
+    # Slice-7 deterministic pre-flight gate: every check below runs in
+    # pure code over the renderer/ledger inputs, never invokes an LLM,
+    # and hard-fails the script before any planner call. Runs on the
+    # --dry-run path too, so dry-run doubles as an inputs-only smoke
+    # test.
+    preflight_errors = run_generator_preflight(source_path)
+    if preflight_errors:
+        print()
+        print(
+            "Pre-flight validation failed; the generator will not call "
+            "the planner."
         )
+        print(format_errors(preflight_errors))
+        return 1
+
+    if args.dry_run:
         print()
         print(
             render_dry_run_report(
@@ -893,13 +962,6 @@ def main(argv: Optional[list[str]] = None) -> int:
             )
         )
         return 0
-    source_path = resolve_repo_path(args.source)
-    output_path = resolve_repo_path(args.output)
-    failed_output_path = (
-        resolve_repo_path(args.failed_output)
-        if args.failed_output is not None
-        else build_failed_output_path(output_path)
-    )
 
     non_citable = validate_required_citable_docs(source_path)
     if non_citable:
