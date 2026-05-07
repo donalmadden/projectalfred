@@ -48,7 +48,15 @@ from alfred.tools.handover_authoring_context import (
     build_authoring_context_packet,
 )
 from alfred.tools.rag import index_corpus
-from alfred.validate import PreflightError, format_errors, run_preflight
+from alfred.ledger.models import Brief
+from alfred.validate import (
+    PostgenError,
+    PreflightError,
+    format_errors,
+    format_postgen_errors,
+    run_preflight,
+    validate_postgen,
+)
 
 REPO_ROOT = Path(__file__).parent.parent
 CONFIG_PATH = REPO_ROOT / "configs" / "default.yaml"
@@ -886,13 +894,107 @@ def build_planner_context(
     return context, historical_chars
 
 
+_TASK_MARKER_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_/.\-]*")
+
+# Priority-ordered patterns for picking a stable substring anchor from a
+# brief.hard_rule. A rendered handover regularly paraphrases the brief's
+# rule prose ("Slice 8 only: implement..." → "Slice 8 only: do not start
+# Slice 9..."), so Check 5 cannot use the full rule text. Instead the
+# script picks one stable anchor per rule (ALL-CAPS const, "Slice N",
+# CamelCase, or hyphenated identifier) and passes those to the
+# validator. The validator stays a pure substring matcher — semantic
+# normalisation lives only here, in the caller.
+_HARD_RULE_ANCHOR_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b([A-Z][A-Z0-9_]{3,})\b"),
+    re.compile(r"\b(Slice\s+\d+)"),
+    re.compile(r"\b([A-Z][a-z]+(?:[A-Z][a-z]+)+)\b"),
+    re.compile(r"\b([A-Za-z]{2,}-[A-Za-z]{2,}(?:-[A-Za-z]+)*)\b"),
+)
+
+
+def derive_hard_rule_anchor(rule: str) -> str | None:
+    """Pick one stable substring anchor for Check 5 from a brief hard rule.
+
+    Returns ``None`` when the rule contains no anchorable token — the
+    caller surfaces that as a warning so the operator knows the
+    invariant is unenforceable until the brief is rewritten.
+    """
+    for pattern in _HARD_RULE_ANCHOR_PATTERNS:
+        match = pattern.search(rule)
+        if match is not None:
+            return match.group(1)
+    return None
+
+
+def derive_hard_rule_phrases(brief: Brief) -> list[str]:
+    """Collect one anchor per ``brief.hard_rules`` entry, in order."""
+    anchors: list[str] = []
+    for rule in brief.hard_rules:
+        anchor = derive_hard_rule_anchor(rule)
+        if anchor is not None:
+            anchors.append(anchor)
+    return anchors
+
+
+def derive_task_markers(intent: str) -> list[str]:
+    """Derive deterministic brief-mapping markers from a TaskSeed intent.
+
+    Slice 8's Check 6 needs short, stable substrings that prove the
+    planner kept the topic on-target without asserting full titles. We
+    pick tokens from the brief's task intent that look like file paths
+    or symbolic identifiers (contain ``/``, ``.``, or ``_``) plus
+    all-uppercase tokens of length ≥ 4 — the kinds of strings the
+    planner copies verbatim. Falls back to the longest 5+ char word in
+    the intent so the check never silently no-ops.
+    """
+    seen: set[str] = set()
+    markers: list[str] = []
+    for raw in _TASK_MARKER_TOKEN_RE.findall(intent):
+        # Strip trailing sentence punctuation so a sentence-ending word
+        # like ``safety.`` does not become a fragile marker.
+        token = raw.rstrip(".,;:!?")
+        is_pathlike = any(c in token for c in "_/.")
+        is_constlike = token.isupper() and len(token) >= 4
+        if not (is_pathlike or is_constlike):
+            continue
+        key = token.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        markers.append(token)
+    if markers:
+        return markers
+    fallback = max(re.findall(r"[A-Za-z]{5,}", intent), key=len, default="")
+    return [fallback] if fallback else []
+
+
+def derive_task_markers_for_brief(brief: Brief) -> list[list[str]]:
+    """Apply :func:`derive_task_markers` to every task in ``brief``."""
+    return [derive_task_markers(task.intent) for task in brief.tasks]
+
+
 def validate_candidate(
     markdown: str,
     *,
     output_path: Path,
     expected_date: str,
-) -> tuple[list[str], list[str]]:
-    """Return ``(errors, warnings)`` from the promotion validators."""
+    expected_git_history_lines: list[str] | None = None,
+    active_brief: Brief | None = None,
+) -> tuple[list[str], list[str], tuple[PostgenError, ...]]:
+    """Return ``(errors, warnings, postgen_errors)`` from the promotion validators.
+
+    ``expected_git_history_lines`` and ``active_brief`` are required for
+    the Slice-8 post-generation gate; they are typed ``Optional`` only so
+    older callers and tests that pre-date the postgen wiring keep working
+    until they migrate. When either is missing, postgen is skipped (and a
+    ``[STRUCTURE]`` warning surfaces, see below).
+
+    ``postgen_errors`` is returned alongside the formatted error strings
+    so the failure path can persist the structured ``format_errors``
+    block into the ``FAILED_CANDIDATE`` artifact body, satisfying the
+    Slice-8 brief's "include validator error output ... in the artifact
+    body" rule.
+    """
     from validate_alfred_handover import validate as validate_handover_structure
     from validate_alfred_planning_facts import (
         validate_current_state_facts,
@@ -901,6 +1003,7 @@ def validate_candidate(
 
     errors: list[str] = []
     warnings: list[str] = []
+    postgen_errors: tuple[PostgenError, ...] = ()
 
     for message in validate_handover_structure(markdown):
         errors.append(f"[STRUCTURE] {message}")
@@ -921,7 +1024,66 @@ def validate_candidate(
         else:
             warnings.append(formatted)
 
-    return errors, warnings
+    # Slice-8 post-generation gate. Runs deterministically over the
+    # planner-returned markdown and contributes its own errors to the
+    # same blocking-promotion path so a single FAILED_CANDIDATE artifact
+    # captures every issue the operator must fix.
+    if active_brief is not None and expected_git_history_lines is not None:
+        if not active_brief.hard_rules or not active_brief.tasks:
+            warnings.append(
+                "[POSTGEN] active brief lacks hard_rules or tasks; "
+                "Check 5/6 cannot run. The planner ledger row must "
+                "carry an editorial brief for canonical promotion."
+            )
+        else:
+            task_markers = derive_task_markers_for_brief(active_brief)
+            hard_rule_phrases = derive_hard_rule_phrases(active_brief)
+            empty_marker_tasks = [
+                task.id
+                for task, markers in zip(active_brief.tasks, task_markers)
+                if not markers
+            ]
+            unanchored_rules = [
+                rule
+                for rule in active_brief.hard_rules
+                if derive_hard_rule_anchor(rule) is None
+            ]
+            if empty_marker_tasks:
+                warnings.append(
+                    "[POSTGEN] could not derive Check-6 markers for "
+                    f"task ids {empty_marker_tasks}; intents must cite "
+                    "a path/identifier or all-caps constant for the "
+                    "planner to anchor against."
+                )
+            if unanchored_rules:
+                warnings.append(
+                    "[POSTGEN] could not derive Check-5 anchors for "
+                    f"{len(unanchored_rules)} hard_rules; rules must "
+                    "include an ALL-CAPS const, 'Slice N', CamelCase, "
+                    "or a hyphenated identifier the planner can carry "
+                    "verbatim into the rendered prose."
+                )
+            if not empty_marker_tasks and not unanchored_rules:
+                result = validate_postgen(
+                    markdown,
+                    expected_id=EXPECTED_HANDOVER_ID,
+                    expected_previous=EXPECTED_PREVIOUS_HANDOVER,
+                    expected_date=expected_date,
+                    expected_git_history_lines=expected_git_history_lines,
+                    required_hard_rule_phrases=hard_rule_phrases,
+                    required_task_markers=task_markers,
+                )
+                postgen_errors = result.errors
+                for err in result.errors:
+                    errors.append(f"[POSTGEN:{err.check}] {err.message}")
+    else:
+        warnings.append(
+            "[POSTGEN] skipped: caller did not supply git_history or "
+            "active_brief. Promotion paths must pass both; tests may "
+            "intentionally omit them."
+        )
+
+    return errors, warnings, postgen_errors
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -1136,10 +1298,19 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     best_draft = normalise_generated_markdown(best_draft)
 
-    errors, warnings = validate_candidate(
+    # Resolve the active brief once for the post-generation gate. This
+    # is the same brief render_handover_inputs already consumed; we
+    # re-load via the public renderer entrypoint rather than mutate
+    # module state, so the gate has explicit, traceable inputs.
+    postgen_ledger = load_ledger(LEDGER_PATH)
+    postgen_active_brief = select_active_phase(postgen_ledger).brief
+
+    errors, warnings, postgen_errors = validate_candidate(
         best_draft,
         output_path=output_path,
         expected_date=generation_date,
+        expected_git_history_lines=list(git_history),
+        active_brief=postgen_active_brief,
     )
     if warnings:
         print("\nValidator warnings:")
@@ -1148,7 +1319,25 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if errors:
         failed_output_path.parent.mkdir(parents=True, exist_ok=True)
-        failed_output_path.write_text(best_draft, encoding="utf-8")
+        artifact_body = best_draft
+        # Per Slice-8 brief: include validator error output in the
+        # artifact body so the FAILED_CANDIDATE on disk carries enough
+        # context to fix the draft without re-running the generator.
+        # Errors are appended as an HTML comment so the artifact stays
+        # parseable as markdown by reviewers.
+        error_block_lines = ["<!-- VALIDATION FAILED — generator did not promote this draft."]
+        error_block_lines.append("Blocking issues:")
+        for error in errors:
+            error_block_lines.append(f"- {error}")
+        if postgen_errors:
+            error_block_lines.append("")
+            error_block_lines.append("Postgen format_errors():")
+            error_block_lines.append(format_postgen_errors(postgen_errors))
+        error_block_lines.append("-->")
+        artifact_body = (
+            best_draft.rstrip() + "\n\n" + "\n".join(error_block_lines) + "\n"
+        )
+        failed_output_path.write_text(artifact_body, encoding="utf-8")
         print("\nValidation failed; canonical file was NOT updated.")
         print(f"Candidate written to {failed_output_path}")
         print("Blocking issues:")
