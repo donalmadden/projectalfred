@@ -4,9 +4,9 @@
 # handovers. Authority flows canonical handover -> phase ledger; the canonical
 # handover documents under docs/canonical/ remain the protocol surface.
 #
-# Slice 2 only: this file is not yet consumed by the generator. It is kept
-# alongside the existing workflow until Slice 6 turns the generator into a
-# renderer.
+# The canonical handover generator now consumes this file deterministically:
+# the next unratified planning row seeds renderer-derived identity and brief
+# content for the next handover draft.
 
 project: blank_project_kickoff_demo
 plan_path: docs/active/ALFRED_BLANK_PROJECT_KICKOFF_DEMO_PLAN.md
@@ -54,56 +54,67 @@ phases:
 
   - id: 6
     title: "Slice 6 — Renderer Replaces Hand-Edited Identity Constants"
-    status: planning
+    status: ratified
     handover_id: ALFRED_HANDOVER_18
-    previous_handover: ALFRED_HANDOVER_17
     scope_sources:
       - docs/active/POST_GRILL_1.md
       - docs/active/HANDOVER_WORKFLOW_DISCUSSION.md
       - CONTEXT.md
     scope_carry_forward: [5]
+
+  - id: 7
+    title: "Slice 7 — Pre-flight validators"
+    status: planning
+    handover_id: ALFRED_HANDOVER_19
+    previous_handover: ALFRED_HANDOVER_18
+    scope_sources: []
+    scope_carry_forward: [6]
     brief:
-      title: "Slice 6 — Renderer Replaces Hand-Edited Identity Constants"
+      title: "Slice 7 — Pre-flight validators"
       goal: |
-        Replace hand-edited identity constants in
-        scripts/generate_next_canonical_handover.py with a deterministic
-        renderer over PhaseLedger + the active Brief, so advancing phases
-        becomes "edit the ledger, run the generator" and the generator
-        stops being a frontier-model surgery target.
+        Add five deterministic pre-flight validators to
+        scripts/generate_next_canonical_handover.py so malformed
+        scope/continuity/ledger conditions hard-fail before any LLM call,
+        while preserving the Slice 6 renderer-derived identity flow and the
+        existing planner pipeline shape.
       hard_rules:
-        - "Renderer must be deterministic: no LLM, no network, pure function over (PhaseLedger, active Brief)."
-        - "Preserve Slice 5's typed three-role ContextBundle seam unchanged."
-        - "Preserve Slice 4's deterministic canonical_handover summary path."
-        - "Do not change the external CLI surface of scripts/generate_next_canonical_handover.py."
-        - "Do not start Slice 7+ work (no new validator stages, no failed-candidate filename logic)."
+        - "Slice 7 only: implement pre-flight validation before the planner call; do not start Slice 8+ post-generation validators or failed-candidate filename logic."
+        - "No LLM-judge anywhere: pre-flight checks must be deterministic code only, per ADR-0003."
+        - "Preserve Slice 6's explicit previous_handover contract; do not infer continuity from phase-id ordering."
+        - "Generator must hard-fail before any LLM call when pre-flight validation fails."
+        - "Preserve Slice 5's three-role ContextBundle seam and Slice 6's renderer-derived identity / CLI surface."
       tasks:
         - id: "1"
-          title: Add the deterministic handover-inputs renderer
+          title: Implement the deterministic pre-flight validator module
           intent: >-
-            Create src/alfred/render/handover_inputs.py exposing a single
-            render_handover_inputs(ledger) entry point plus fixture-based
-            unit tests in tests/test_render/test_handover_inputs.py.
+            Create src/alfred/validate/preflight.py (and package init) with
+            the fixed five-check minimum: scope-source paths exist;
+            carry-forward phase ids exist and are ratified; previous
+            handover's next_handover_id matches; no path appears in more than
+            one context role; reference tags parse.
         - id: "2"
-          title: Wire the generator to the renderer
+          title: Wire pre-flight validation into the generator before planning
           intent: >-
-            Refactor scripts/generate_next_canonical_handover.py so identity
-            constants, argparse defaults, and the module docstring are
-            renderer-derived, while the CLI and promotion behaviour stay
-            stable.
+            Refactor scripts/generate_next_canonical_handover.py so the new
+            pre-flight checks run before any planner / LLM call and surface
+            clear blocking errors without changing the external CLI flags.
         - id: "3"
-          title: Replace stale prose assertions with renderer-output assertions
+          title: Add isolated negative tests and a real-ledger passing regression
           intent: >-
-            Update tests/test_scripts/test_generate_next_canonical_handover.py
-            so it asserts renderer outputs over a fixture ledger/brief
-            rather than prose constants tied to a specific phase number.
+            Create tests/test_validate/test_preflight.py covering each failed
+            check in isolation, plus an integration assertion that the real
+            seed ledger passes pre-flight and that next_handover_id mismatch
+            blocks planner invocation.
       out_of_scope:
-        - Slice 7+ validator-chain expansion (pre-flight or post-generation).
-        - Failed-candidate filename short-circuit logic (Slice 8+).
+        - Slice 8 post-generation validators.
+        - Slice 9 failed-candidate filename short-circuit logic.
+        - Generalizing Slice-6-specific authoritative-scope packet wording unless it is required to land pre-flight checks safely.
         - FastAPI endpoint or service-wiring changes.
-        - Redesigning the typed ContextBundle seam introduced in Slice 5.
       definition_of_done:
-        - "scripts/generate_next_canonical_handover.py contains no hand-edited identity literals; all identity is renderer-derived."
-        - "tests/test_render/test_handover_inputs.py asserts deterministic outputs over a fixture ledger."
-        - "tests/test_scripts/test_generate_next_canonical_handover.py no longer asserts prose-level substrings tied to a specific phase number."
-        - "python -m pytest -q passes; pyright reports 0 errors for src/alfred/render."
-      followups_from_prior_phase: []
+        - "All 5 deterministic pre-flight checks are implemented with at least one negative test each."
+        - "scripts/generate_next_canonical_handover.py hard-fails before any LLM call when pre-flight validation fails."
+        - "A passing pre-flight for the real seed ledger is covered by a regression test."
+        - "No LLM-judge logic is introduced anywhere in the validation chain."
+      followups_from_prior_phase:
+        - "Preserve the explicit previous_handover rule introduced in Slice 6; missing continuity metadata must fail loudly rather than falling back to phase-order inference."
+        - "Use the new script-boundary dry-run/helper testing pattern when touching generator wiring."
