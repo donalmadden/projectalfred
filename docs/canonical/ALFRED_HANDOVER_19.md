@@ -306,15 +306,23 @@ pytest -q
 > cold-start from this artifact alone.
 
 **What worked:**
-- *executor to fill*
+- The pre-flight validator landed cleanly as a small pure package (`src/alfred/validate/preflight.py`) because Slice 6 had already separated renderer-derived identity from the planner pipeline.
+- `run_generator_preflight()` gave the generator one shared context-input plan for validation and runtime, which kept Check A aligned with the actual `scope`-role inputs instead of a weaker ledger-only approximation.
+- Script-boundary tripwire tests proved fail-fast behaviour before any planner / LLM call while preserving the existing CLI and `--dry-run` surface.
 
 **What was harder than expected:**
-- *executor to fill*
+- Defining Check A precisely was harder than expected because the live Slice 7 planning row carried `scope_sources: []`, while the real `scope` inputs came from the authoritative authoring-context selection plan.
+- Bootstrapping `ALFRED_HANDOVER_19` exposed stale Slice-6-specific authoring-packet selectors in the generator, so the new flow needed a small hardening pass before it could be trusted end-to-end.
+- Proving "no planner call on pre-flight failure" required explicit script-boundary tripwire tests; manual smoke runs alone were not strong enough checkpoint evidence.
 
 **Decisions made during execution (deviations from this plan):**
-- *executor to fill — each deviation must include: what changed, why, who approved*
+- Added `run_generator_preflight()` as a small shared context-input planner instead of scattering pre-flight inputs through `main()`. Why: validation and runtime needed one source of truth for scope paths, role assignments, and continuity inputs. Approved during Slice 7 implementation review.
+- Clarified this handover's Task 1 / Task 2 language so Check A validates assembled `scope`-role inputs, not only the planning row's direct `scope_sources`. Why: the original wording was too easy to misread against the live seed row. Approved during handover closeout review.
+- Kept pre-flight pure and non-printing, with `format_errors()` as the operator-facing adapter. Why: isolated tests and generator wiring stay deterministic and simple. Approved during implementation review.
 
 **Forward plan:**
-- *executor to fill*
+- Ratify Slice 7 in `docs/active/PHASE_LEDGER.yaml` and seed Slice 8 as `ALFRED_HANDOVER_20` with `ALFRED_HANDOVER_19` as the explicit `previous_handover`.
+- Preserve the shared context-input planning seam and the script-boundary fail-fast proof pattern when adding post-generation validators so Slice 8 does not drift from real generator behaviour.
+- Slice 8 should implement deterministic post-generation validation and failed-candidate blocking without weakening Slice 7 pre-flight or the renderer-derived identity surface from Slice 6.
 
 **next_handover_id:** ALFRED_HANDOVER_20

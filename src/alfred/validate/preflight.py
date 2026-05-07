@@ -62,7 +62,7 @@ class PreflightError:
 # ``**next_handover_id:** <ID>`` so this preflight is a deterministic parse,
 # not a semantic inference.
 _NEXT_HANDOVER_RE = re.compile(
-    r"\*\*next_handover_id:\*\*\s*(?P<id>[A-Za-z0-9_]+)"
+    r"(?m)^\*\*next_handover_id:\*\*\s*(?P<id>[A-Za-z0-9_]+)\s*$"
 )
 
 

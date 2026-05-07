@@ -242,6 +242,14 @@ documents:
     authoritative: true
     notes: Canonical handover for Concern X Slice 6 — ledger+brief renderer replaces hand-edited identity constants.
 
+  - current_path: docs/canonical/ALFRED_HANDOVER_19.md
+    kind: canonical_handover
+    lifecycle_status: canonical
+    indexed: true
+    citable: true
+    authoritative: true
+    notes: Canonical handover for Concern X Slice 7 — deterministic pre-flight validators before any planner / LLM call.
+
   - current_path: docs/protocol/architecture.md
     kind: protocol_doc
     lifecycle_status: protocol

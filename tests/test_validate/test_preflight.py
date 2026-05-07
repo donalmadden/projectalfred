@@ -161,6 +161,31 @@ def test_check_c_flags_missing_next_handover_line(tmp_path: Path) -> None:
     assert "next_handover_id" in error.message
 
 
+def test_check_c_ignores_inline_examples_and_reads_real_metadata_line(
+    tmp_path: Path,
+) -> None:
+    """Quoted examples elsewhere in the handover must not satisfy Check C.
+
+    The continuity parser should read the real metadata line, not the first
+    instructional mention of ``**next_handover_id:** ...`` in body prose.
+    """
+    previous = tmp_path / "ALFRED_HANDOVER_900.md"
+    previous.write_text(
+        "# Old handover\n\n"
+        "Implementation note: preserve the literal form "
+        "`**next_handover_id:** ALFRED_HANDOVER_BAD_EXAMPLE` in docs.\n\n"
+        "**next_handover_id:** ALFRED_HANDOVER_901\n",
+        encoding="utf-8",
+    )
+
+    errors = check_previous_next_handover_match(
+        previous_handover_path=previous,
+        expected_handover_id="ALFRED_HANDOVER_901",
+    )
+
+    assert errors == []
+
+
 def test_check_d_flags_role_collision_with_paths_and_roles() -> None:
     """Check D names both roles that share a path."""
     errors = check_no_role_collision(

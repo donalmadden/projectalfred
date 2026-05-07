@@ -64,57 +64,65 @@ phases:
 
   - id: 7
     title: "Slice 7 — Pre-flight validators"
-    status: planning
+    status: ratified
     handover_id: ALFRED_HANDOVER_19
-    previous_handover: ALFRED_HANDOVER_18
     scope_sources: []
     scope_carry_forward: [6]
+
+  - id: 8
+    title: "Slice 8 — Post-generation validators"
+    status: planning
+    handover_id: ALFRED_HANDOVER_20
+    previous_handover: ALFRED_HANDOVER_19
+    scope_sources:
+      - docs/active/POST_GRILL_1.md
+      - docs/active/HANDOVER_WORKFLOW_DISCUSSION.md
+      - CONTEXT.md
+    scope_carry_forward: [7]
     brief:
-      title: "Slice 7 — Pre-flight validators"
+      title: "Slice 8 — Post-generation validators"
       goal: |
-        Add five deterministic pre-flight validators to
-        scripts/generate_next_canonical_handover.py so malformed
-        scope/continuity/ledger conditions hard-fail before any LLM call,
-        while preserving the Slice 6 renderer-derived identity flow and the
-        existing planner pipeline shape.
+        Add six deterministic post-generation validators to
+        scripts/generate_next_canonical_handover.py so planner output is
+        checked before promotion, failed candidates are written when
+        validation blocks promotion, and the Slice 7 pre-flight gate plus
+        Slice 6 renderer-derived identity flow remain intact.
       hard_rules:
-        - "Slice 7 only: implement pre-flight validation before the planner call; do not start Slice 8+ post-generation validators or failed-candidate filename logic."
-        - "No LLM-judge anywhere: pre-flight checks must be deterministic code only, per ADR-0003."
-        - "Preserve Slice 6's explicit previous_handover contract; do not infer continuity from phase-id ordering."
-        - "Generator must hard-fail before any LLM call when pre-flight validation fails."
+        - "Slice 8 only: implement post-generation validation after planner return; do not start Slice 9 failed-candidate filename short-circuit logic."
+        - "No LLM-judge anywhere: post-generation checks must be deterministic code only, per ADR-0003."
+        - "Preserve Slice 7's fail-fast pre-flight gate before any LLM call; Slice 8 adds a second deterministic gate after planner output, not a replacement."
+        - "On post-generation failure, write a FAILED_CANDIDATE artifact and do not promote to the canonical output path."
         - "Preserve Slice 5's three-role ContextBundle seam and Slice 6's renderer-derived identity / CLI surface."
       tasks:
         - id: "1"
-          title: Implement the deterministic pre-flight validator module
+          title: Implement the deterministic post-generation validator module
           intent: >-
-            Create src/alfred/validate/preflight.py (and package init) with
-            the fixed five-check minimum: scope-source paths exist;
-            carry-forward phase ids exist and are ratified; previous
-            handover's next_handover_id matches; no path appears in more than
-            one context role; reference tags parse.
+            Create src/alfred/validate/postgen.py with the fixed six-check
+            minimum over planner output and promotion safety.
         - id: "2"
-          title: Wire pre-flight validation into the generator before planning
+          title: Wire post-generation validation into the generator after planning
           intent: >-
-            Refactor scripts/generate_next_canonical_handover.py so the new
-            pre-flight checks run before any planner / LLM call and surface
-            clear blocking errors without changing the external CLI flags.
+            Refactor scripts/generate_next_canonical_handover.py so
+            post-generation checks run after planner output is produced and
+            before promotion, writing FAILED_CANDIDATE on failure without
+            changing the external CLI flags.
         - id: "3"
-          title: Add isolated negative tests and a real-ledger passing regression
+          title: Add isolated negative tests and a known-good regression
           intent: >-
-            Create tests/test_validate/test_preflight.py covering each failed
-            check in isolation, plus an integration assertion that the real
-            seed ledger passes pre-flight and that next_handover_id mismatch
-            blocks planner invocation.
+            Create tests/test_validate/test_postgen.py covering each failed
+            check in isolation, plus an integration assertion that
+            reconstructable known-good handovers pass post-generation
+            validation against their notional briefs.
       out_of_scope:
-        - Slice 8 post-generation validators.
         - Slice 9 failed-candidate filename short-circuit logic.
-        - Generalizing Slice-6-specific authoritative-scope packet wording unless it is required to land pre-flight checks safely.
+        - Broad validator refactors beyond the minimum deterministic sharing needed for post-generation checks.
+        - Generalizing Slice-6-specific authoritative-scope packet wording unless it is required to land post-generation checks safely.
         - FastAPI endpoint or service-wiring changes.
       definition_of_done:
-        - "All 5 deterministic pre-flight checks are implemented with at least one negative test each."
-        - "scripts/generate_next_canonical_handover.py hard-fails before any LLM call when pre-flight validation fails."
-        - "A passing pre-flight for the real seed ledger is covered by a regression test."
+        - "All 6 deterministic post-generation checks are implemented with at least one negative test each."
+        - "scripts/generate_next_canonical_handover.py writes FAILED_CANDIDATE and blocks promotion when post-generation validation fails."
+        - "Known-good prior handovers pass post-generation validation against reconstructed or notional briefs."
         - "No LLM-judge logic is introduced anywhere in the validation chain."
       followups_from_prior_phase:
-        - "Preserve the explicit previous_handover rule introduced in Slice 6; missing continuity metadata must fail loudly rather than falling back to phase-order inference."
-        - "Use the new script-boundary dry-run/helper testing pattern when touching generator wiring."
+        - "Preserve the shared context-input planning seam from Slice 7 so post-generation validation does not drift from real generator behaviour."
+        - "Preserve Slice 7's script-boundary fail-fast proof pattern: negative tests should prove promotion-blocking behaviour explicitly, not only by manual smoke runs."
