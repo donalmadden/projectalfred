@@ -51,3 +51,59 @@ phases:
     status: ratified
     handover_id: ALFRED_HANDOVER_12
     scope_carry_forward: [0, 1, 2, 3, 4]
+
+  - id: 6
+    title: "Slice 6 — Renderer Replaces Hand-Edited Identity Constants"
+    status: planning
+    handover_id: ALFRED_HANDOVER_18
+    previous_handover: ALFRED_HANDOVER_17
+    scope_sources:
+      - docs/active/POST_GRILL_1.md
+      - docs/active/HANDOVER_WORKFLOW_DISCUSSION.md
+      - CONTEXT.md
+    scope_carry_forward: [5]
+    brief:
+      title: "Slice 6 — Renderer Replaces Hand-Edited Identity Constants"
+      goal: |
+        Replace hand-edited identity constants in
+        scripts/generate_next_canonical_handover.py with a deterministic
+        renderer over PhaseLedger + the active Brief, so advancing phases
+        becomes "edit the ledger, run the generator" and the generator
+        stops being a frontier-model surgery target.
+      hard_rules:
+        - "Renderer must be deterministic: no LLM, no network, pure function over (PhaseLedger, active Brief)."
+        - "Preserve Slice 5's typed three-role ContextBundle seam unchanged."
+        - "Preserve Slice 4's deterministic canonical_handover summary path."
+        - "Do not change the external CLI surface of scripts/generate_next_canonical_handover.py."
+        - "Do not start Slice 7+ work (no new validator stages, no failed-candidate filename logic)."
+      tasks:
+        - id: "1"
+          title: Add the deterministic handover-inputs renderer
+          intent: >-
+            Create src/alfred/render/handover_inputs.py exposing a single
+            render_handover_inputs(ledger) entry point plus fixture-based
+            unit tests in tests/test_render/test_handover_inputs.py.
+        - id: "2"
+          title: Wire the generator to the renderer
+          intent: >-
+            Refactor scripts/generate_next_canonical_handover.py so identity
+            constants, argparse defaults, and the module docstring are
+            renderer-derived, while the CLI and promotion behaviour stay
+            stable.
+        - id: "3"
+          title: Replace stale prose assertions with renderer-output assertions
+          intent: >-
+            Update tests/test_scripts/test_generate_next_canonical_handover.py
+            so it asserts renderer outputs over a fixture ledger/brief
+            rather than prose constants tied to a specific phase number.
+      out_of_scope:
+        - Slice 7+ validator-chain expansion (pre-flight or post-generation).
+        - Failed-candidate filename short-circuit logic (Slice 8+).
+        - FastAPI endpoint or service-wiring changes.
+        - Redesigning the typed ContextBundle seam introduced in Slice 5.
+      definition_of_done:
+        - "scripts/generate_next_canonical_handover.py contains no hand-edited identity literals; all identity is renderer-derived."
+        - "tests/test_render/test_handover_inputs.py asserts deterministic outputs over a fixture ledger."
+        - "tests/test_scripts/test_generate_next_canonical_handover.py no longer asserts prose-level substrings tied to a specific phase number."
+        - "python -m pytest -q passes; pyright reports 0 errors for src/alfred/render."
+      followups_from_prior_phase: []

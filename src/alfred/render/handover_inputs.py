@@ -66,20 +66,22 @@ def select_active_phase(ledger: PhaseLedger) -> Phase:
     return planning[0]
 
 
-def _previous_handover_id(ledger: PhaseLedger, active: Phase) -> str:
-    """Return the handover_id of the most recent ratified phase before ``active``."""
-    prior_ratified = [
-        p for p in ledger.phases
-        if p.status == "ratified" and p.id < active.id and p.handover_id
-    ]
-    if not prior_ratified:
+def _previous_handover_id(active: Phase) -> str:
+    """Return the explicit ``previous_handover`` declared on the planning row.
+
+    The ledger is multi-track (the kickoff demo and the Alfred-meta seam-
+    discipline work share one file), so phase-id ordering is not a reliable
+    way to find the immediately-preceding canonical handover. The planning
+    row therefore declares ``previous_handover`` explicitly and the renderer
+    refuses to guess.
+    """
+    if active.previous_handover is None:
         raise NoActivePhaseError(
-            f"Active phase {active.id} has no prior ratified phase to derive "
-            "previous_handover from."
+            f"Active phase {active.id} is missing previous_handover; the "
+            "planning row must declare it explicitly so renderer continuity "
+            "is deterministic and not inferred from phase-id ordering."
         )
-    most_recent = max(prior_ratified, key=lambda p: p.id)
-    assert most_recent.handover_id is not None
-    return most_recent.handover_id
+    return active.previous_handover
 
 
 def _require_brief(active: Phase) -> Brief:
@@ -88,11 +90,23 @@ def _require_brief(active: Phase) -> Brief:
             f"Phase {active.id} (status='planning') is missing a brief; "
             "renderer needs the editorial seed to produce identity inputs."
         )
+    if active.brief.title.strip() != active.title.strip():
+        raise NoActivePhaseError(
+            f"Phase {active.id} title mismatch: phase.title="
+            f"{active.title!r} but brief.title={active.brief.title!r}. "
+            "The two must agree so the rendered DISPLAY_TITLE has a single "
+            "deterministic source of truth."
+        )
     return active.brief
 
 
 def _render_sprint_goal(brief: Brief) -> str:
     parts: list[str] = [brief.goal.strip()]
+
+    if brief.hard_rules:
+        parts.append("Hard rules (protocol invariants — do not relax):")
+        for rule in brief.hard_rules:
+            parts.append(f"- {rule}")
 
     if brief.tasks:
         parts.append("This phase must lock down:")
@@ -229,7 +243,7 @@ def render_handover_inputs(ledger: PhaseLedger) -> HandoverInputs:
         )
 
     handover_id = active.handover_id
-    previous_handover = _previous_handover_id(ledger, active)
+    previous_handover = _previous_handover_id(active)
     display_title = _render_display_title(brief)
     sprint_goal = _render_sprint_goal(brief)
     demo_plan_grounding = _render_demo_plan_grounding(ledger, active)

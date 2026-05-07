@@ -36,6 +36,7 @@ class Phase(BaseModel):
     title: str
     status: PhaseStatus
     handover_id: str | None = None
+    previous_handover: str | None = None
     scope_sources: list[str] = Field(default_factory=list)
     scope_carry_forward: list[int] = Field(default_factory=list)
     brief: Brief | None = None
@@ -50,6 +51,21 @@ class Phase(BaseModel):
             raise ValueError(
                 f"Phase {self.id}: ratified phases must not have a brief"
                 " (brief is for unratified/planning phases only)"
+            )
+        if self.status == "ratified" and self.previous_handover is not None:
+            raise ValueError(
+                f"Phase {self.id}: ratified phases must not declare "
+                "previous_handover (it is derivable from the canonical "
+                "handover; the field is reserved for planning rows so the "
+                "renderer can lock continuity explicitly)"
+            )
+        if (
+            self.status == "planning"
+            and self.previous_handover is not None
+            and not self.previous_handover.strip()
+        ):
+            raise ValueError(
+                f"Phase {self.id}: previous_handover must not be empty"
             )
         return self
 

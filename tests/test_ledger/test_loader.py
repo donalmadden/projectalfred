@@ -23,12 +23,26 @@ def test_seed_ledger_loads_and_round_trips() -> None:
     assert ledger.project == "blank_project_kickoff_demo"
 
     phase_ids = [p.id for p in ledger.phases]
-    assert phase_ids == [0, 1, 2, 3, 4, 5]
+    assert phase_ids == [0, 1, 2, 3, 4, 5, 6]
 
-    for phase in ledger.phases:
-        assert phase.status == "ratified"
+    ratified_phases = [p for p in ledger.phases if p.status == "ratified"]
+    planning_phases = [p for p in ledger.phases if p.status == "planning"]
+
+    assert len(ratified_phases) == 6
+    for phase in ratified_phases:
         assert phase.handover_id is not None
         assert phase.brief is None
+        assert phase.previous_handover is None
+
+    # Exactly one unratified seed row — Slice 6 — drives the renderer.
+    assert len(planning_phases) == 1
+    active = planning_phases[0]
+    assert active.handover_id == "ALFRED_HANDOVER_18"
+    # previous_handover is explicit on the planning row; it is not inferred
+    # from phase-id ordering, which would resolve to ALFRED_HANDOVER_12 here.
+    assert active.previous_handover == "ALFRED_HANDOVER_17"
+    assert active.brief is not None
+    assert active.title == active.brief.title
 
 
 def test_seed_ledger_scope_source_paths_exist_on_disk() -> None:
@@ -95,6 +109,43 @@ def test_load_ledger_rejects_brief_on_ratified(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     with pytest.raises(LedgerLoadError, match="brief"):
+        load_ledger(bad)
+
+
+def test_load_ledger_rejects_previous_handover_on_ratified(tmp_path: Path) -> None:
+    bad = tmp_path / "prev_on_ratified.yaml"
+    bad.write_text(
+        "project: demo\n"
+        "phases:\n"
+        "  - id: 1\n"
+        "    title: x\n"
+        "    status: ratified\n"
+        "    handover_id: H1\n"
+        "    previous_handover: H0\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(LedgerLoadError, match="previous_handover"):
+        load_ledger(bad)
+
+
+def test_load_ledger_rejects_empty_previous_handover_on_planning(
+    tmp_path: Path,
+) -> None:
+    bad = tmp_path / "empty_prev.yaml"
+    bad.write_text(
+        "project: demo\n"
+        "phases:\n"
+        "  - id: 1\n"
+        "    title: x\n"
+        "    status: planning\n"
+        "    handover_id: H1\n"
+        "    previous_handover: '   '\n"
+        "    brief:\n"
+        "      title: x\n"
+        "      goal: g\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(LedgerLoadError, match="previous_handover"):
         load_ledger(bad)
 
 
