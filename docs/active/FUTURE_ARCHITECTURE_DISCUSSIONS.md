@@ -327,3 +327,416 @@ This is a good idea, with one important refinement:
 > Alfred should tune the protocol artifact first, and the agent profile second.
 
 The comparison loop between executor-complete and reviewer-complete looks genuinely valuable. But if Alfred implements that insight well, the main output should be **better handovers and checkpoints**, not just better per-agent repair prompts.
+
+---
+
+## Parked: Treat canonical handover generation as a deterministic build pipeline, not a monolithic script
+
+**Captured:** 2026-05-07, after the Slice 6/7 generator work, the `ALFRED_HANDOVER_19` bootstrap, and the closeout/prep step that moved the live seed to `ALFRED_HANDOVER_20`.
+
+This is an extremely opinionated proposal because the recent work surfaced the same conclusion from multiple angles:
+
+- Slice 6 proved that renderer-derived identity belongs behind a deterministic seam.
+- Slice 7 proved that pre-flight validation belongs behind a deterministic seam.
+- The bootstrap of `ALFRED_HANDOVER_19` proved that the **authoring packet / context-input planning seam** is still too implicit and too phase-specific.
+- The closeout step for `ALFRED_HANDOVER_20` proved that **ratification and next-phase seeding are still manual protocol-adjacent surgery**, not a first-class operation.
+- The Hugging Face / RAG behavior proved that Alfred's current "generate a canonical handover" path is still too exposed to **incidental runtime concerns** (network metadata checks, whole-corpus re-indexing) that should be adapters, not methodology.
+
+The conclusion is not "add a few more helper functions."
+
+The conclusion is:
+
+> `scripts/generate_next_canonical_handover.py` has become a shallow, overloaded module whose interface is now carrying too many independent concerns. It should stop being the place where Alfred's generation methodology *lives* and become a thin adapter over a deterministic build pipeline.
+
+### The evidence is no longer subtle
+
+At the time of this note:
+
+- `scripts/generate_next_canonical_handover.py` is **1172 lines**
+- `tests/test_scripts/test_generate_next_canonical_handover.py` is **788 lines**
+- `src/alfred/tools/handover_authoring_context.py` is **339 lines**
+- `src/alfred/render/handover_inputs.py` is **263 lines**
+- `src/alfred/validate/preflight.py` is **294 lines**
+
+That is not automatically bad. Big files can still be deep. But the recent bug history says this one is not deep enough:
+
+- stale phase-specific authoring selectors blocked `ALFRED_HANDOVER_19` bootstrap
+- Check A's original wording was too weak because the *real* `scope` inputs were not the same thing as direct `scope_sources`
+- Check C originally matched an instructional inline example of `**next_handover_id:** ...` instead of the real metadata line
+- phase closeout to the next handover still required coordinated edits across:
+  - canonical handover post-mortem
+  - docs manifest registration
+  - phase ledger ratification + seed row
+  - real-ledger tests
+- the RAG embedder path is cache-backed in practice, but still shaped like a network-capable runtime path when the methodology really wants a stable local adapter
+
+The pattern is the important part:
+
+- the methodology is getting stronger
+- the script is accumulating too many places where the methodology is *realized informally*
+
+That is the definition of a shallow module under pressure.
+
+## Blunt Diagnosis
+
+Today, Alfred's handover-generation stack is really **five modules pretending to be one**:
+
+1. **Identity compiler**
+
+   Render `handover_id`, `previous_handover`, display title, sprint goal, grounding, and CLI defaults from `PhaseLedger` + `Brief`.
+
+   This is now reasonably explicit in `src/alfred/render/handover_inputs.py`.
+
+2. **Context-input planner**
+
+   Decide which docs become `scope`, which prior phases become `carry_forward`, which handover becomes `continuity`, which reference-tag sources matter, and which authoring selectors define the authoritative packet.
+
+   This is still too implicit and too script-bound.
+
+3. **Validation pipeline**
+
+   Pre-flight before planner call, post-generation before promotion, and deterministic formatting of failures.
+
+   Slice 7 made pre-flight real. Slice 8 is the obvious continuation.
+
+4. **Prompt/retrieval adapter**
+
+   Build the authoring packet, manage RAG indexing/retrieval, load the embedder, and constrain context volume.
+
+   This is not methodology, but it materially affects generation reliability.
+
+5. **Phase transition / ratification workflow**
+
+   Close out a completed canonical handover, promote it into docs registry + ledger truth, and seed the next planning row.
+
+   This is currently under-tooled and therefore brittle.
+
+These deserve **named seams** and **small interfaces**. Right now they are still coupled primarily through one script and a cluster of tests.
+
+## The Proposal
+
+Promote handover generation to an explicit deterministic build pipeline with four primary seams:
+
+1. **`HandoverBuildPlan` seam**
+2. **`ValidationReport` seam**
+3. **`PromotionResult` seam**
+4. **`PhaseTransitionPlan` seam**
+
+And then make `scripts/generate_next_canonical_handover.py` a thin adapter over those seams.
+
+### 1. Introduce a real `HandoverBuildPlan`
+
+This is the highest-leverage missing module.
+
+The build plan should be the one place that answers:
+
+- Which phase is active?
+- What is the source canonical handover?
+- What are the output and failed-candidate paths?
+- Which docs are the real `scope` inputs?
+- Which phase ids are `carry_forward`?
+- Which path/role assignments will actually feed `ContextBundle`?
+- Which markdown files are reference-tag sources?
+- Which authoring selectors define the authoritative packet?
+
+One plausible shape:
+
+```python
+@dataclass(frozen=True)
+class HandoverBuildPlan:
+    inputs: HandoverInputs
+    source_path: Path
+    output_path: Path
+    failed_output_path: Path
+    scope_doc_paths: tuple[Path, ...]
+    carry_forward_phase_ids: tuple[int, ...]
+    role_assignments: tuple[tuple[str, str], ...]
+    reference_tag_sources: tuple[Path, ...]
+    authoring_selection_specs: tuple[DocumentSelectionSpec, ...]
+```
+
+Strong opinion:
+
+- `run_generator_preflight()` should not be inventing a quasi-plan ad hoc.
+- `load_demo_plan_context()` should not be reading a separate, partially-overlapping notion of scope truth.
+- `build_planner_context()` should not be downstream from a plan it cannot name.
+
+All three should consume the same `HandoverBuildPlan`.
+
+If Alfred does not do this, every new validator slice will keep rediscovering the same "what are the real inputs?" question in a different local form.
+
+### 2. Make validation stages consume the build plan, not ad hoc parameter lists
+
+Slice 7's pre-flight surface is already much better than what came before, but it still takes a fairly wide argument list.
+
+That is acceptable as an intermediate step. It is not the final deep shape.
+
+The deeper module is:
+
+- `build_handover_plan(...) -> HandoverBuildPlan`
+- `run_preflight(plan) -> ValidationReport`
+- `run_postgen(plan, candidate) -> ValidationReport`
+
+Where `ValidationReport` is explicit and stable:
+
+```python
+@dataclass(frozen=True)
+class ValidationReport:
+    ok: bool
+    errors: tuple[ValidationError, ...]
+    warnings: tuple[ValidationWarning, ...]
+```
+
+Strong opinion:
+
+- Alfred should stop passing long validator argument lists around once two validator stages exist.
+- The build plan is the test surface.
+- Validators should consume declared build intent, not reconstruct intent from ambient script state.
+
+### 3. Freeze the generator script into an orchestration adapter
+
+The generator script should eventually read like:
+
+1. parse args
+2. load ledger
+3. build handover plan
+4. run pre-flight
+5. if dry-run: render dry-run report from plan
+6. run planner / critique loop
+7. run post-generation validation
+8. promote or archive failed candidate
+
+Nothing else.
+
+That means:
+
+- no selector folklore at top-level script scope except through a plan builder
+- no phase-specific packet logic embedded directly in `main()`
+- no validation-specific branching logic beyond "run report, format report, branch on report"
+- no retrieval/indexing policy embedded in the promotion flow itself
+
+This is not an aesthetic preference. It is a leverage preference.
+
+The current script still has too much **interface bulk**:
+
+- identity defaults
+- scope planning
+- authoring packet construction
+- context bundle assembly
+- pre-flight
+- RAG indexing
+- planner execution
+- candidate validation
+- promotion logic
+
+That is too much methodology in one interface, even if the implementation is careful.
+
+### 4. Split prompt/retrieval concerns behind an adapter with offline-first semantics
+
+The recent Hugging Face behavior is a warning.
+
+Even when the model artifacts are cached locally, Alfred still *looks* like a runtime that may need the network during generation. That is the wrong dependency profile for protocol generation.
+
+Recommended stance:
+
+- treat embedding model access as an **adapter**
+- make it **offline-first by default once the cache is warm**
+- stop rebuilding the Chroma index on every run unless either:
+  - docs inventory changed materially
+  - embedding model changed
+
+Concrete direction:
+
+- use `SentenceTransformer(..., local_files_only=True)` once the model is expected to be present
+- allow an explicit "warm cache" or "refresh model" workflow separately from canonical handover generation
+- fingerprint the indexed docs set + embedding model, and skip destructive re-index when unchanged
+
+Strong opinion:
+
+> Canonical handover generation should not be a "maybe the internet works today" workflow.
+
+If the network is needed, that should be an explicit cache-warming step, not an incidental property of the main path.
+
+### 5. Promote phase closeout / next-phase seeding to a first-class operation
+
+The move from `ALFRED_HANDOVER_19` to `ALFRED_HANDOVER_20` required:
+
+- filling post-mortem
+- registering the handover in `DOCS_MANIFEST.yaml`
+- ratifying the phase row in `PHASE_LEDGER.yaml`
+- adding the next planning row
+- updating the real-ledger tests
+- re-checking continuity metadata
+
+That is too protocol-adjacent to remain a manual ritual forever.
+
+Alfred needs a `PhaseTransitionPlan` or equivalent seam that makes these operations inspectable and repeatable.
+
+Not necessarily fully automated immediately. But at minimum:
+
+- one deterministic report of "what must change to ratify phase N"
+- one deterministic report of "what the next seed row for phase N+1 should be"
+- one place that checks whether the closeout is internally coherent
+
+Strong opinion:
+
+> "Finish the handover, then manually remember the four other places truth must move" is exactly the kind of seam drift Alfred claims to protect against.
+
+### 6. Treat authoring-packet selection as a planning concern, not script trivia
+
+The bootstrap failure around stale Slice-6 selectors is one of the most important lessons from the recent work.
+
+The bad pattern was:
+
+- the ledger/brief said one thing
+- the generator's packet selectors still said another
+- the dry-run identity looked right
+- the real generation path still failed or drifted
+
+That means the **authoring packet selection plan** is now a first-class concern.
+
+Recommended direction:
+
+- keep section contracts narrow; do not rush to contract every doc class
+- but move authoring-packet selector intent into a named plan module rather than letting it sit as top-level script constants forever
+- make it testable as "for active phase X, which source docs and section paths are authoritative inputs?"
+
+This is where Alfred should be opinionated:
+
+- **the active slice title should drive the active plan section**
+- **continuity selectors should target stable semantic sections, not brittle prose variants**
+- **if a selector becomes phase-specific in a way that cannot be expressed as stable semantics, that is a design smell, not a local exception**
+
+## What Not To Do
+
+This proposal is intentionally strong because there are several attractive wrong turns.
+
+### 1. Do not solve this by adding more helper functions to the script and calling it done
+
+That is just object-level tidying. The problem is seam ownership, not line wrapping.
+
+### 2. Do not move the protocol into hidden prompts or hidden runtime state
+
+If the build plan or phase-transition plan is real, it must be inspectable in code and test surfaces.
+
+### 3. Do not generalize all doc classes immediately
+
+The right immediate deepening target is the handover build pipeline, not a sweeping schema program for every markdown file in the repo.
+
+### 4. Do not add more validators without first naming the thing they validate
+
+Once post-generation validators land, the shared build plan becomes non-negotiable. Otherwise Alfred will have pre-flight and post-generation stages each reconstructing input truth differently.
+
+### 5. Do not let retrieval/runtime concerns leak upward into methodology claims
+
+RAG, embedding caches, Chroma, and packet sizing are implementation concerns behind an adapter. They matter, but they should not dictate the protocol surface.
+
+## Migration Path
+
+This should not be done as a grand rewrite. The right migration is staged.
+
+### Step 1 — Extract `HandoverBuildPlan` with no behavior change
+
+- move the current pre-flight input planning into a named module
+- have `run_generator_preflight()` and `load_demo_plan_context()` consume it
+- keep CLI behavior unchanged
+
+### Step 2 — Make post-generation validation consume the same plan
+
+- Slice 8 should not invent a parallel notion of generator truth
+- if a candidate fails, the failed-candidate decision should still cite the same build plan inputs
+
+### Step 3 — Introduce an offline-first retrieval adapter
+
+- local-files-only model loading after cache warm
+- stable index fingerprint
+- skip destructive re-index when unchanged
+
+### Step 4 — Introduce a deterministic phase-closeout helper/report
+
+- not necessarily full automation on day one
+- but at least one authoritative place to compute:
+  - manifest registration delta
+  - ledger ratification delta
+  - next planning-row skeleton
+  - continuity metadata expectations
+
+### Step 5 — Shrink the top-level script aggressively
+
+Success is when `generate_next_canonical_handover.py` becomes boring.
+
+That is a compliment.
+
+## Why This Is Worth Doing
+
+### 1. It increases locality
+
+The recent bugs were not "hard algorithms." They were distributed truth problems.
+
+Deepening the pipeline would concentrate:
+
+- phase identity truth
+- scope-input truth
+- validation input truth
+- promotion truth
+
+into named modules instead of one script plus several tests plus human memory.
+
+### 2. It increases leverage
+
+Once a real build plan exists:
+
+- new validators become easier to add
+- dry-run becomes more meaningful
+- closeout becomes easier to mechanize
+- test suites can assert one object instead of shadowing behavior from many call sites
+
+### 3. It improves AI navigability without depending on AI heroics
+
+This is exactly the kind of depth Alfred should want:
+
+- a smaller, clearer interface for the next agent
+- fewer places where a model must "just know" which values are supposed to line up
+- more deterministic reports and less patch-by-intuition surgery
+
+## Risks
+
+### 1. Over-abstracting too early
+
+If Alfred introduces five new types and none of them become real seams, this becomes ceremony.
+
+Mitigation:
+
+- extract the build plan first
+- prove two real consumers use it
+- only then deepen further
+
+### 2. Creating a second source of truth
+
+The build plan must remain derived from ledger + manifest + docs, not become a parallel protocol artifact.
+
+### 3. Treating phase closeout automation as protocol authority
+
+Any closeout helper must remain a scaffold that updates derived views and draft docs. Canonical handovers stay the protocol surface.
+
+## Recommended Stance For Now
+
+- Treat this as the **leading architecture direction** for the next generation of Alfred's handover workflow.
+- Do **not** canonize it as settled doctrine yet.
+- But also: do **not** keep adding major features to `generate_next_canonical_handover.py` as if the current shape were healthy.
+
+The strongest version of the recommendation is:
+
+> Freeze the monolith. Extract the build plan. Make validators and packet assembly consume it. Then continue.
+
+If Alfred ignores this, the likely future is not one catastrophic failure. It is a steady stream of "small" selector mismatches, validation drift, test shadowing, closeout omissions, and runtime surprises that collectively make the workflow feel more magical and less governed than the methodology promises.
+
+## Bottom Line
+
+Slice 6 and Slice 7 were a success. They also made the next deepening target obvious.
+
+The next architecture move should **not** be "add more logic to the generator script."
+
+It should be:
+
+> turn canonical handover generation into an explicit deterministic build pipeline, and demote the script to a thin adapter over that pipeline.
