@@ -71,6 +71,20 @@ DEFAULT_CONTEXT_CHARS = 6000
 CONTEXT_PATH = REPO_ROOT / "CONTEXT.md"
 WORKFLOW_DISCUSSION_PATH = REPO_ROOT / "docs/active/HANDOVER_WORKFLOW_DISCUSSION.md"
 POST_GRILL_PLAN_PATH = REPO_ROOT / "docs/active/POST_GRILL_1.md"
+LEDGER_FILE_PATH = LEDGER_PATH
+
+
+def _previous_canonical_handover_path() -> Path:
+    """Return the previous canonical handover path derived from the ledger.
+
+    Defined here (forward-declared) so AUTHORITATIVE_SCOPE_SELECTION_SPECS can
+    cite the previous handover by derived identity rather than hand-edited
+    literal. Resolution against the docs manifest happens later via
+    ``_resolve_manifest_doc_path`` for the same filename.
+    """
+    return REPO_ROOT / "docs/canonical" / SOURCE_FILENAME
+
+
 AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
     DocumentSelectionSpec(
         source_path=CONTEXT_PATH,
@@ -143,7 +157,7 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
         ),
     ),
     DocumentSelectionSpec(
-        source_path=REPO_ROOT / "docs/canonical/ALFRED_HANDOVER_17.md",
+        source_path=_previous_canonical_handover_path(),
         selectors=(
             SectionSelector(
                 "WHAT EXISTS TODAY > Current generator + contract surfaces (Slice 4 baseline)",
@@ -151,11 +165,11 @@ AUTHORITATIVE_SCOPE_SELECTION_SPECS: tuple[DocumentSelectionSpec, ...] = (
             ),
             SectionSelector(
                 "WHAT EXISTS TODAY > Key Design Decisions Inherited (Do Not Revisit)",
-                "slice 5 decisions that remain locked during slice 6",
+                "decisions from the prior ratified phase that remain locked",
             ),
             SectionSelector(
                 "POST-MORTEM",
-                "ratified close-out and explicit forward plan to Slice 6",
+                "ratified close-out and explicit forward plan to the active phase",
                 render_mode="facts_and_verbatim",
             ),
         ),
@@ -269,6 +283,15 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help=(
             "How much of the previous canonical handover to pass into the planner. "
             "Default: summary"
+        ),
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Print the renderer-derived identity and the paths the script "
+            "would write, then exit before any LLM call. Does not modify the "
+            "canonical or archive output paths."
         ),
     )
     return parser.parse_args(argv)
@@ -500,24 +523,47 @@ def load_demo_plan_context() -> AuthoringContextPacket:
             source_char_count=0,
             packet_char_count=0,
         )
+    previous_handover_doc = (
+        f"`docs/canonical/{EXPECTED_PREVIOUS_HANDOVER}.md` — previous "
+        "ratified canonical handover (continuity input for the active phase)."
+    )
+    intro_lines = (
+        f"===== AUTHORITATIVE AUTHORING PACKET FOR {EXPECTED_HANDOVER_ID} "
+        f"({DISPLAY_TITLE}) — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
+        "Pass 1 indexed the authoritative docs by phase-ledger/brief "
+        "source-of-truth semantics and preserved context-bundle "
+        "constraints from prior ratified phases.",
+        f"Pass 2 selected only the sections needed to author the "
+        f"{EXPECTED_HANDOVER_ID} renderer brief and rendered structured "
+        "facts plus verbatim source excerpts.",
+        "The source docs remain authoritative. The extracted packet is a "
+        "deterministic view over those docs, not a replacement for them.",
+        "",
+        "===== AUTHORITATIVE SOURCE DOC MAP =====",
+        "- `CONTEXT.md` — canonical glossary for `Phase Ledger`, `Brief`, "
+        "`Context Roles`, `Doc Class`, and the no-LLM validator rule.",
+        "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved "
+        "Concern X rationale for phase ledger, brief, renderer-fixture "
+        "tests, and preserved provenance-aware context assembly.",
+        "- `docs/active/POST_GRILL_1.md` — post-grill implementation "
+        "plan; this handover plans the active brief's slice only.",
+        f"- {previous_handover_doc}",
+        "- `docs/active/PHASE_LEDGER.yaml` — seed ledger input; repo "
+        "truth for concrete renderer inputs and active-phase selection "
+        "(this is where the renderer reads its identity from).",
+        "Reference-doc expectation: the generated canonical should cite "
+        "the markdown source docs directly, and cite "
+        "`docs/active/PHASE_LEDGER.yaml` when concrete renderer inputs or "
+        "active-phase selection examples materially constrain the phase.",
+        "Source-of-truth expectation: identity, sprint goal, and demo "
+        "plan grounding are derived from `PhaseLedger` + the active "
+        "`Brief` while preserving the typed `ContextBundle` seam and "
+        "the contract-driven continuity summarizer.",
+    )
     return build_authoring_context_packet(
         existing_specs,
         repo_root=REPO_ROOT,
-        intro_lines=(
-            "===== AUTHORITATIVE CONCERN X SLICE 6 AUTHORING PACKET — DO NOT TREAT AS HISTORICAL CONTINUITY =====",
-            "Pass 1 indexed the authoritative docs by phase-ledger/brief source-of-truth semantics, preserved context-bundle constraints from Slice 5, renderer-fixture expectations, and ratified close-out guidance from Slice 5.",
-            "Pass 2 selected only the sections needed to author the Handover 18 renderer brief and rendered structured facts plus verbatim source excerpts.",
-            "The source docs remain authoritative. The extracted packet is a deterministic view over those docs, not a replacement for them.",
-            "",
-            "===== AUTHORITATIVE SOURCE DOC MAP =====",
-            "- `CONTEXT.md` — canonical glossary for `Phase Ledger`, `Brief`, `Context Roles`, `Doc Class`, and the no-LLM validator rule.",
-            "- `docs/active/HANDOVER_WORKFLOW_DISCUSSION.md` — resolved Concern X rationale for phase ledger, brief, renderer-fixture tests, and preserved provenance-aware context assembly.",
-            "- `docs/active/POST_GRILL_1.md` — post-grill implementation plan with Slice 6 objective, files, tests, and acceptance criteria.",
-            "- `docs/canonical/ALFRED_HANDOVER_17.md` — ratified Slice 5 close-out and explicit forward plan to Slice 6.",
-            "- `docs/active/PHASE_LEDGER.yaml` — seed ledger input; repo truth for renderer examples even though this packet remains markdown-derived.",
-            "Reference-doc expectation: the generated canonical should cite the four markdown docs directly, and cite `docs/active/PHASE_LEDGER.yaml` when concrete renderer inputs or active-phase selection examples materially constrain the phase.",
-            "Source-of-truth expectation: Slice 6 turns the generator into a renderer over `PhaseLedger` + active `Brief` while preserving Slice 5's typed `ContextBundle`, Slice 4's contract-driven continuity summarizer, and the external CLI surface.",
-        ),
+        intro_lines=intro_lines,
     )
 
 
@@ -801,6 +847,24 @@ def validate_candidate(
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     print(HANDOVER_INPUTS.module_docstring)
+
+    if args.dry_run:
+        source_path = resolve_repo_path(args.source)
+        output_path = resolve_repo_path(args.output)
+        failed_output_path = (
+            resolve_repo_path(args.failed_output)
+            if args.failed_output is not None
+            else build_failed_output_path(output_path)
+        )
+        print("\n--- DRY RUN: renderer-derived identity ---")
+        print(f"# {DISPLAY_TITLE}")
+        print(f"id: {EXPECTED_HANDOVER_ID}")
+        print(f"previous_handover: {EXPECTED_PREVIOUS_HANDOVER}")
+        print(f"would-read source:   {source_path}")
+        print(f"would-write output:  {output_path}")
+        print(f"would-write failed:  {failed_output_path}")
+        print("(no LLM call, no files modified)")
+        return 0
     source_path = resolve_repo_path(args.source)
     output_path = resolve_repo_path(args.output)
     failed_output_path = (
@@ -904,7 +968,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     else:
         print(
             "WARNING: authoritative scope docs missing; planner will lack the "
-            "ratified Slice 6 scope brief."
+            "active phase scope brief."
         )
 
     planner_out = None

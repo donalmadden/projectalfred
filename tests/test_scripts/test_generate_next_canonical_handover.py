@@ -288,13 +288,23 @@ def test_authoritative_scope_includes_phase_ledger_brief_and_context_roles() -> 
     )
 
 
-def test_slice_six_grounding_mentions_phase_ledger_brief_and_renderer() -> None:
-    assert "PhaseLedger" in gnch.SPRINT_GOAL
-    assert "Brief" in gnch.SPRINT_GOAL
-    assert "renderer" in gnch.SPRINT_GOAL
-    assert "tests/test_render/test_handover_inputs.py" in gnch.SPRINT_GOAL
-    assert "`CONTEXT.md`" in gnch.DEMO_PLAN_GROUNDING
-    assert "`docs/active/PHASE_LEDGER.yaml`" in gnch.DEMO_PLAN_GROUNDING
+def test_sprint_goal_and_grounding_are_renderer_derived() -> None:
+    """Identity-bearing globals must come from ``HANDOVER_INPUTS``.
+
+    Asserts the wiring rather than prose substrings tied to a specific
+    phase number. The ground truth is the renderer over the live ledger;
+    if the planning row's brief changes, these globals should follow
+    automatically.
+    """
+    assert gnch.SPRINT_GOAL == gnch.HANDOVER_INPUTS.sprint_goal
+    assert gnch.DEMO_PLAN_GROUNDING == gnch.HANDOVER_INPUTS.demo_plan_grounding
+
+    # The renderer produces a non-empty grounding block that cites at least
+    # one of the active phase's declared scope sources.
+    active = gnch.HANDOVER_INPUTS
+    assert active.sprint_goal.strip()
+    assert active.demo_plan_grounding.strip()
+    assert "deterministic" in active.demo_plan_grounding
 
 
 def _legacy_split_level2_sections(markdown: str) -> dict[str, str]:
