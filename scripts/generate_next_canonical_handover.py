@@ -30,6 +30,7 @@ from alfred.context import ContextBundle, ContextItem, summarize_canonical_hando
 from alfred.docs.contract_validator import split_markdown_by_contract
 from alfred.docs.contracts import DocContract, get_doc_class_contract
 from alfred.ledger.loader import load_ledger
+from alfred.ledger.models import Brief
 from alfred.render.handover_inputs import (
     HandoverInputs,
     render_handover_inputs,
@@ -48,7 +49,6 @@ from alfred.tools.handover_authoring_context import (
     build_authoring_context_packet,
 )
 from alfred.tools.rag import index_corpus
-from alfred.ledger.models import Brief
 from alfred.validate import (
     PostgenError,
     PreflightError,
